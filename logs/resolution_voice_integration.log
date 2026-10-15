@@ -1,0 +1,16 @@
+# Resolution Log: Voice Integration & Scoping
+Task IDs: lgcc-agent-integration, voice-assistant-dispatch
+Date: 2026-10-15
+Author: Yassine
+
+## Resolution Details
+1. lgcc-agent-integration:
+   - Voice transcription is implemented cleanly via `:Listen` (using faster-whisper from ~/myenv).
+   - `:Lgcc` is implemented as an asynchronous Neovim command with live ticker and Quickfix on demand.
+   - Voice readback of lgcc results is supported via `:Lgcc -s` using piper TTS.
+   - Verified that :v was scrapped due to conflict with Vim visual mode / :vglobal commands.
+
+2. voice-assistant-dispatch:
+   - Formally retired / scrapped: user decision confirmed that speech-to-speech assistant mode is discarded.
+   - `:Listen` is strictly reserved for continuous and push-to-talk voice transcription directly into the active buffer at cursor.
+   - LLM logic checking remains strictly text/file-based via `:Lgcc`.

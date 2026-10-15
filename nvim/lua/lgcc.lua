@@ -96,7 +96,7 @@ function M.lint(opts)
     vim.cmd("silent write")
   end
     
-  -- TODO(lgcc-native-lua | tier:B | blocks:[lgcc-dep-bundle]): Implement native Lua LLM execution inside Neovim rather than invoking external shell wrapper.
+  -- TODO(lgcc-native-lua | tier:A | blocks:[lgcc-dep-bundle]): Implement native Lua LLM execution inside Neovim rather than invoking external shell wrapper.
   -- Description: Replace external ~/.local/bin/lgcc bash script dependency with direct Lua-driven OpenCode/OpenRouter request engine for portable self-contained execution.
   -- Criterion: review: "lgcc.lua executes logical compilation using native libuv sockets/curl without requiring external lgcc bash script"
   local cmd = { "lgcc" }

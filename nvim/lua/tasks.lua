@@ -8,14 +8,6 @@
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior, in-tree source TODOs, and calendar.
 -- Criterion: review: ":Tasks displays integrated agenda view with calendar items and filterable tags"
 
--- TODO(lgcc-agent-integration | tier:A | blocks:[voice-assistant-dispatch]): Combine lgcc as a nvim plugin with ~/code/agent and whisper speech-to-speech.
--- Description: Implement voice dictation and assistant :v command with faster-whisper and OpenCode/OpenRouter backend, routing errors to Quickfix on demand.
--- Criterion: review: ":v initiates push-to-talk dictation and streams LLM response without inline highlighting artifacts"
-
--- TODO(voice-assistant-dispatch | tier:B | depends_on:[lgcc-agent-integration]): Implement seamless voice assistant mode switching in Neovim.
--- Description: Connect whisper transcription output to speech-to-speech assistant mode in Neovim terminal split.
--- Criterion: assert: transcription latency under 800ms and audio plays back without blocking editor
-
 -- TODO(lgcc-dep-bundle | tier:B | depends_on:[lgcc-native-lua] | blocks:[lgcc-task-synthesizer]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
 -- Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
 -- Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
