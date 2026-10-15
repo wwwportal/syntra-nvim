@@ -216,7 +216,7 @@ local function setup_qf_keymaps(origin_win)
 end
 
 --- Show in-tree Source-First TODO DAG
-local function show_repo_tasks(script_path, origin_win)
+local function show_repo_tasks(script_path, origin_win, target_task_id)
   local cmd = { "python3", script_path, "--json" }
   local out = vim.fn.system(cmd)
   if vim.v.shell_error ~= 0 and out == "" then
@@ -243,8 +243,12 @@ local function show_repo_tasks(script_path, origin_win)
     return a.id < b.id
   end)
 
+  local target_idx = nil
   local qf = {}
-  for _, t in ipairs(tasks) do
+  for idx, t in ipairs(tasks) do
+    if target_task_id and t.id == target_task_id then
+      target_idx = idx
+    end
     local blocks_str = (#t.blocks > 0) and (" -> blocks [" .. table.concat(t.blocks, ", ") .. "]") or ""
     local deps_str = (#t.depends_on > 0) and (" (depends on: " .. table.concat(t.depends_on, ", ") .. ")") or ""
     local fullpath = root .. "/" .. t.file
@@ -260,7 +264,14 @@ local function show_repo_tasks(script_path, origin_win)
   vim.fn.setqflist(qf, "r")
   vim.fn.setqflist({}, "a", { title = string.format("%s Source Tasks (%d tasks in DAG)", repo_name, #tasks) })
   vim.cmd("botright copen 12")
+  local qf_win = vim.api.nvim_get_current_win()
   setup_qf_keymaps(origin_win)
+
+  if target_idx then
+    pcall(vim.api.nvim_win_set_cursor, qf_win, { target_idx, 0 })
+    vim.cmd("normal! zz")
+  end
+
   vim.api.nvim_echo({
     { string.format("● Loaded %d in-tree tasks for %s (<CR> to jump in split, o to jump & close, q to close)", #tasks, repo_name), "ModeMsg" }
   }, false, {})
@@ -415,55 +426,58 @@ local function get_comment_leader(bufnr)
   return "-- "
 end
 
-local function resolve_target_file(spec_file)
+local function resolve_target_file(spec_file, origin_win)
   if spec_file and spec_file ~= "" then
     local path = vim.fn.fnamemodify(spec_file, ":p")
-    return path, nil
+    return path
   end
 
-  -- 1. Current window/buffer if regular file
+  -- 1. Check if origin_win already has a regular file
+  if origin_win and vim.api.nvim_win_is_valid(origin_win) then
+    local obuf = vim.api.nvim_win_get_buf(origin_win)
+    if vim.bo[obuf].buftype == "" and vim.api.nvim_buf_get_name(obuf) ~= "" then
+      return vim.api.nvim_buf_get_name(obuf)
+    end
+  end
+
+  -- 2. Check current window
   local cur_win = vim.api.nvim_get_current_win()
   local cur_buf = vim.api.nvim_win_get_buf(cur_win)
   if vim.bo[cur_buf].buftype == "" and vim.api.nvim_buf_get_name(cur_buf) ~= "" then
-    return vim.api.nvim_buf_get_name(cur_buf), cur_win
+    return vim.api.nvim_buf_get_name(cur_buf)
   end
 
-  -- 2. Check alternate buffer (#)
+  -- 3. Check alternate buffer (#)
   local alt = vim.fn.bufnr("#")
   if alt > 0 and vim.api.nvim_buf_is_valid(alt) and vim.bo[alt].buftype == "" and vim.api.nvim_buf_get_name(alt) ~= "" then
-    for _, w in ipairs(vim.api.nvim_list_wins()) do
-      if vim.api.nvim_win_get_buf(w) == alt then
-        return vim.api.nvim_buf_get_name(alt), w
-      end
-    end
-    return vim.api.nvim_buf_get_name(alt), nil
+    return vim.api.nvim_buf_get_name(alt)
   end
 
-  -- 3. Check other windows displaying regular files
+  -- 4. Check other windows displaying regular files
   for _, w in ipairs(vim.api.nvim_list_wins()) do
     local b = vim.api.nvim_win_get_buf(w)
     if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
-      return vim.api.nvim_buf_get_name(b), w
+      return vim.api.nvim_buf_get_name(b)
     end
   end
 
-  -- 4. Check loaded buffers
+  -- 5. Check loaded buffers
   for _, b in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
-      return vim.api.nvim_buf_get_name(b), nil
+      return vim.api.nvim_buf_get_name(b)
     end
   end
 
-  return nil, nil
+  return nil
 end
 
-local function insert_task_into_buf(bufnr, win, spec)
+local function insert_task_into_buf(bufnr, origin_win, spec)
   local leader = get_comment_leader(bufnr)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
 
   local row = 1
-  if win and vim.api.nvim_win_is_valid(win) then
-    row = vim.api.nvim_win_get_cursor(win)[1]
+  if origin_win and vim.api.nvim_win_is_valid(origin_win) and vim.api.nvim_win_get_buf(origin_win) == bufnr then
+    row = vim.api.nvim_win_get_cursor(origin_win)[1]
   end
 
   -- Ensure unique ID within buffer
@@ -488,40 +502,60 @@ local function insert_task_into_buf(bufnr, win, spec)
   local insert_idx = math.max(0, row - 1)
   vim.api.nvim_buf_set_lines(bufnr, insert_idx, insert_idx, false, lines)
 
-  if win and vim.api.nvim_win_is_valid(win) then
-    vim.api.nvim_set_current_win(win)
-    pcall(vim.api.nvim_win_set_cursor, win, { insert_idx + 1, #indent })
+  -- Save buffer so lint_tasks.py can immediately parse it
+  vim.api.nvim_buf_call(bufnr, function()
+    pcall(vim.cmd, "silent! write")
+  end)
+
+  local task_line = insert_idx + 1
+
+  -- 1. Open that task in origin_win (the split from which the command was called)
+  if origin_win and vim.api.nvim_win_is_valid(origin_win) then
+    local orig_buf = vim.api.nvim_win_get_buf(origin_win)
+    if vim.bo[orig_buf].buftype == "terminal" then
+      vim.w[origin_win].terminal_origin = orig_buf
+    end
+    vim.api.nvim_win_set_buf(origin_win, bufnr)
+    pcall(vim.api.nvim_win_set_cursor, origin_win, { task_line, #indent })
+    vim.api.nvim_win_call(origin_win, function() vim.cmd("normal! zz") end)
   end
 
   local fname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":~:.")
   vim.api.nvim_echo({
-    { string.format("● Added %s task '%s' to %s:%d", spec.kind, spec.id, fname, insert_idx + 1), "ModeMsg" }
+    { string.format("● Added %s task '%s' to %s:%d", spec.kind, spec.id, fname, task_line), "ModeMsg" }
   }, false, {})
+
+  -- 2. Open bottom split with task list, with cursor on the newly created task
+  local lint_script = find_lint_tasks()
+  if lint_script then
+    show_repo_tasks(lint_script, origin_win, spec.id)
+  end
 end
 
 --- Add a task to source file: :Tasks add [file] <TODO|FIXME>:<description>
-function M.add_task(arg_str)
+function M.add_task(arg_str, origin_win)
+  origin_win = origin_win or vim.api.nvim_get_current_win()
   local spec, err = parse_task_spec(arg_str)
   if not spec then
     vim.notify(err, vim.log.levels.ERROR)
     return
   end
 
-  local target_file, target_win = resolve_target_file(spec.file)
+  local target_file = resolve_target_file(spec.file, origin_win)
   if target_file then
     local bufnr = vim.fn.bufnr(target_file)
     if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
       bufnr = vim.fn.bufadd(target_file)
       vim.fn.bufload(bufnr)
     end
-    insert_task_into_buf(bufnr, target_win, spec)
+    insert_task_into_buf(bufnr, origin_win, spec)
   else
     vim.ui.input({ prompt = "Target source file for task: ", completion = "file" }, function(input)
       if input and vim.trim(input) ~= "" then
         local file = vim.fn.fnamemodify(vim.trim(input), ":p")
         local bufnr = vim.fn.bufadd(file)
         vim.fn.bufload(bufnr)
-        insert_task_into_buf(bufnr, nil, spec)
+        insert_task_into_buf(bufnr, origin_win, spec)
       else
         vim.notify("Cancelled: no source file specified", vim.log.levels.WARN)
       end
@@ -537,7 +571,7 @@ function M.tasks(args)
 
   if vim.startswith(args, "add ") or args == "add" then
     local add_args = vim.trim(args:sub(4))
-    M.add_task(add_args)
+    M.add_task(add_args, origin_win)
     return
   end
 
