@@ -16,23 +16,59 @@
 -- Description: Replace function and method bodies with stubs while retaining complete type annotations, docstring invariants, and interface definitions.
 -- Criterion: review: "Skeletonizer achieves >70% character and token reduction on target modules while preserving all exported signatures"
 
--- TODO(lgcc-dep-bundle | tier:A | depends_on:[ir-contract-skeletonizer] | blocks:[lgcc-task-synthesizer, ir-graph-builder]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
+-- TODO(lgcc-dep-bundle | tier:A | depends_on:[ir-contract-skeletonizer] | blocks:[lgcc-task-synthesizer, graph-repo-scanner]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
 -- Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
 -- Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
 
--- TODO(ir-graph-builder | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[router-topological-pruner]): Construct global multi-file repository symbol dependency graph.
--- Description: Traverse all tracked repository source files to build a global symbol dependency graph linking callers, callees, and imported types.
+-- TODO(graph-repo-scanner | tier:A | depends_on:[lgcc-dep-bundle] | blocks:[graph-symbol-table]): Discover and index repository source files respecting .gitignore.
+-- Description: Implement repository-wide source file scanner discovering all Python and Lua files while filtering test/build/vendor noise.
+-- Criterion: review: "scripts/bundle_ir.py --scan-repo returns complete list of tracked source files"
+
+-- TODO(graph-symbol-table | tier:B | depends_on:[graph-repo-scanner] | blocks:[graph-edge-extractor]): Construct global symbol table mapping fully-qualified names to signatures and locations.
+-- Description: Build repository symbol table V mapping module.Class.method and module.func FQNs to file locations, line ranges, and signatures.
+-- Criterion: review: "Symbol table indexes all top-level classes, methods, and functions with unique FQNs"
+
+-- TODO(graph-edge-extractor | tier:B | depends_on:[graph-symbol-table] | blocks:[ir-graph-builder]): Extract cross-file call-graph and type-reference dependency edges.
+-- Description: Resolve AST call sites and type annotations against the global symbol table to generate directed dependency edges E.
+-- Criterion: review: "Extracted graph contains verified caller->callee edges across different modules"
+
+-- TODO(ir-graph-builder | tier:B | depends_on:[graph-edge-extractor] | blocks:[router-distance-decay]): Construct global multi-file repository symbol dependency graph.
+-- Description: Assemble and serialize global repository symbol DAG G=(V, E) into compact adjacency representation.
 -- Criterion: review: "scripts/bundle_ir.py --graph returns full repository symbol DAG with verified node and edge counts"
 
--- TODO(router-topological-pruner | tier:B | depends_on:[ir-graph-builder] | blocks:[router-budget-knapsack]): Compute topological distance and PageRank importance weighting on symbol graph.
--- Description: Given target file, assign importance weights W(v|q) to graph nodes using distance decay and Personalized PageRank.
+-- TODO(router-distance-decay | tier:B | depends_on:[ir-graph-builder] | blocks:[router-personalized-pagerank]): Compute directed shortest-path distance decay weights from target symbols.
+-- Description: Calculate directed graph distances d(u, v) from target symbols and apply exponential/harmonic distance decay weighting.
+-- Criterion: review: "Distance decay assigns strictly decreasing weights to k-hop neighborhood nodes"
+
+-- TODO(router-personalized-pagerank | tier:B | depends_on:[router-distance-decay] | blocks:[router-topological-pruner]): Compute Personalized PageRank centrality rooted at target symbols.
+-- Description: Run power-iteration Personalized PageRank with random walk restart rooted at target symbols to score structural centrality.
+-- Criterion: review: "PPR converges in <=30 iterations and ranks shared utility and interface hubs higher than leaf stubs"
+
+-- TODO(router-topological-pruner | tier:B | depends_on:[router-personalized-pagerank] | blocks:[router-knapsack-solver]): Compute composite importance weighting on symbol graph.
+-- Description: Synthesize composite node importance scores S(v|q) combining PPR centrality and distance decay, pruning zero-relevance subgraphs.
 -- Criterion: review: "Router ranks 1-hop and 2-hop dependent symbols higher than unrelated repository symbols"
 
--- TODO(router-budget-knapsack | tier:B | depends_on:[router-topological-pruner] | blocks:[lgcc-compressed-ir]): Implement knapsack context allocator bounded by token budget.
+-- TODO(router-knapsack-solver | tier:B | depends_on:[router-topological-pruner] | blocks:[router-connectivity-guard]): Solve 0/1 knapsack optimization selecting symbols under token budget.
+-- Description: Formulate and solve knapsack optimization selecting symbol nodes to maximize total relevance score under active context token budget.
+-- Criterion: review: "Greedy/DP knapsack selector terminates in <50ms and satisfies sum(token_cost) <= budget"
+
+-- TODO(router-connectivity-guard | tier:B | depends_on:[router-knapsack-solver] | blocks:[router-budget-knapsack]): Enforce path connectivity invariant on selected symbol subgraph.
+-- Description: Ensure all selected symbols retain valid import/call paths to target symbols to prevent disconnected orphan hallucinations.
+-- Criterion: review: "Allocated context contains zero orphan symbols or unresolvable type references"
+
+-- TODO(router-budget-knapsack | tier:B | depends_on:[router-connectivity-guard] | blocks:[ir-schema-formatter]): Implement knapsack context allocator bounded by token budget.
 -- Description: Select optimal symbol subgraph maximizing information coverage score while staying strictly within active context token budget.
 -- Criterion: review: "Router output token count stays under specified budget while maximizing coverage score"
 
--- TODO(lgcc-compressed-ir | tier:B | depends_on:[router-budget-knapsack] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
+-- TODO(ir-schema-formatter | tier:B | depends_on:[router-budget-knapsack] | blocks:[lgcc-cli-router-hook]): Emit unified compressed context IR schema for model prompt.
+-- Description: Format target file, budget-allocated symbol skeletons, and dependency topology into compact prompt intermediate representation.
+-- Criterion: review: "Formatted IR stream preserves all type contracts while achieving >70% compression"
+
+-- TODO(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
+-- Description: Integrate bundle_ir.py --route --budget into lgcc.lua with optional --budget argument for dynamic context allocation.
+-- Criterion: review: ":Lgcc --budget 4000 dynamically queries router and passes knapsack-allocated IR context"
+
+-- TODO(lgcc-compressed-ir | tier:B | depends_on:[lgcc-cli-router-hook] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
 -- Description: Implement a compact AST/interface representation (symbol dependency graph and skeletonized type stubs) to keep full repository context in the model's active window without blowing up token limits.
 -- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
 
