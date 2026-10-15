@@ -624,6 +624,9 @@ vim.keymap.set("n", "ZQ", function() smart_quit({ force = true }) end, { desc = 
 -- ── LSP ──
 require("lsp")
 
+-- ── Tasks Navigator (Prover DAG & Taskwarrior) ──
+require("tasks")
+
 
 -- ── Plugin manager (lazy.nvim) ──
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
