@@ -72,7 +72,7 @@ function M.start_transcription()
 end
 
 function M.setup()
-    vim.api.nvim_create_user_command("listen", function()
+    vim.api.nvim_create_user_command("Listen", function()
         M.start_transcription()
     end, { desc = "Voice transcription (:listen)" })
 
