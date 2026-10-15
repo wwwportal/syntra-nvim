@@ -244,7 +244,6 @@ local function show_repo_tasks(script_path, origin_win)
     table.insert(qf, {
       filename = fullpath,
       lnum = t.line,
-      col = 1,
       text = string.format("[Tier %s] %s%s%s: %s", t.tier, t.id, deps_str, blocks_str, t.desc),
       type = t.tier == "A" and "E" or (t.tier == "B" and "W" or "I"),
     })
