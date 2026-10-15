@@ -61,7 +61,11 @@ function M.start_transcription()
                 local after = line_text:sub(col + 1)
                 local was_mod = vim.bo[cur_buf].modifiable
                 vim.bo[cur_buf].modifiable = true
-                vim.api.nvim_buf_set_lines(cur_buf, row - 1, row, false, { before .. text .. after })
+                local sep = ""
+                if text ~= "" and text:sub(-1):match("[%s%.%,;:!?]") == nil then
+                    sep = " "
+                end
+                vim.api.nvim_buf_set_lines(cur_buf, row - 1, row, false, { before .. text .. sep .. after })
                 vim.bo[cur_buf].modifiable = was_mod
                 col = #before + #text
                 inserted = true
