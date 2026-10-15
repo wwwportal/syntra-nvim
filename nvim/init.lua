@@ -394,18 +394,18 @@ for _, mode in ipairs({ "n", "t", "i" }) do
 	end
 end
 
--- Resize the focused split by dragging its border in the pressed direction.
--- `:resize +N` always grows the *current* window by taking from the neighbour on
--- its right/below, so a naive +/- mapping feels inverted once the focused split is
--- the left-most (or top-/bottom-most) one: e.g. the left-most split has no left
--- neighbour, so pressing "left" would grow it instead of moving its right border
--- left. Here the sign is resolved against the real neighbour, so the border always
--- moves in the direction you pressed.
+-- ── Split Resizing: Static Trailing Edge Invariant ──────────────────────────
+-- Each focused split owns exactly one vertical edge and one horizontal edge:
+--   • Vertical axis: Trailing border (Right). If it's the right-most split,
+--     it owns its inner border (Left).
+--   • Horizontal axis: Trailing border (Bottom). If it's the bottom-most split,
+--     it owns its inner border (Top).
+-- Directional keys move that owned edge along the axis:
+--   • Right ('l') / Left ('h') move the owned vertical edge Right (+) or Left (-).
+--   • Down ('j') / Up ('k') move the owned horizontal edge Down (+) or Up (-).
 local function resize_split(dir)
 	local step = 2
-	local horizontal = (dir == "h" or dir == "l") -- left/right use `vertical resize`
-	local forward = (dir == "l" or dir == "j") -- "next" neighbour is on the right/below
-	local opposite = ({ h = "l", l = "h", k = "j", j = "k" })[dir]
+	local cur = vim.api.nvim_get_current_win()
 
 	local function neighbor(d)
 		local n = vim.fn.winnr(d)
@@ -415,7 +415,7 @@ local function resize_split(dir)
 		return vim.fn.win_getid(n)
 	end
 
-	local function resize_win(win, delta)
+	local function resize_win(win, delta, horizontal)
 		vim.api.nvim_win_call(win, function()
 			if horizontal then
 				vim.cmd(string.format("vertical resize %+d", delta))
@@ -425,27 +425,26 @@ local function resize_split(dir)
 		end)
 	end
 
-	local cur = vim.api.nvim_get_current_win()
-	local near = neighbor(dir)
-	if near then
-		-- The shared border is on the pressed side: grow the focused split outward.
-		if forward then
-			resize_win(cur, step) -- right/below neighbour gives up the space
-		else
-			resize_win(near, -step) -- left/above neighbour gives up the space
+	if dir == "h" or dir == "l" then
+		-- Vertical edge (horizontal movement: left/right)
+		local r_near = neighbor("l")
+		local l_near = neighbor("h")
+		local target = r_near and cur or l_near
+		if not target then
+			return
 		end
-	else
-		local far = neighbor(opposite)
-		if not far then
-			return -- single window, nothing to resize
+		local delta = (dir == "l") and step or -step
+		resize_win(target, delta, true)
+	elseif dir == "j" or dir == "k" then
+		-- Horizontal edge (vertical movement: down/up)
+		local b_near = neighbor("j")
+		local t_near = neighbor("k")
+		local target = b_near and cur or t_near
+		if not target then
+			return
 		end
-		-- Border is on the opposite side: shrink the focused split so the border
-		-- moves toward the direction pressed.
-		if forward then
-			resize_win(far, step)
-		else
-			resize_win(cur, -step)
-		end
+		local delta = (dir == "j") and step or -step
+		resize_win(target, delta, false)
 	end
 end
 
