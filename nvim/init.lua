@@ -467,6 +467,120 @@ for _, mode in ipairs({ "n", "t", "i" }) do
 	vim.keymap.set(mode, "<A-z>", zoom_split, { desc = "Zoom (maximize) split" })
 end
 
+-- ── Smart Quit: Return to Terminal Split on :q ──────────────────────────────
+-- When a file is opened from a terminal split (e.g. via 'n file', 'nvim file',
+-- $EDITOR, or :edit), quitting the file (:q, :wq, :x, :q!, ZZ, ZQ) returns to the
+-- terminal split instead of closing the split/window.
+
+local function smart_quit(opts)
+	opts = opts or {}
+	local cur_win = vim.api.nvim_get_current_win()
+	local cur_buf = vim.api.nvim_get_current_buf()
+
+	-- Check if this window was previously showing a terminal buffer
+	local term_buf = vim.w[cur_win].terminal_origin
+	if not term_buf or not vim.api.nvim_buf_is_valid(term_buf) or vim.bo[term_buf].buftype ~= "terminal" then
+		local alt = vim.fn.bufnr("#")
+		if alt > 0 and vim.api.nvim_buf_is_valid(alt) and vim.bo[alt].buftype == "terminal" then
+			term_buf = alt
+		else
+			term_buf = nil
+		end
+	end
+
+	-- If write requested (:wq, :x, ZZ)
+	if opts.write then
+		if vim.bo[cur_buf].modified then
+			local ok, err = pcall(vim.cmd, "write")
+			if not ok then
+				vim.api.nvim_err_writeln(err or "Failed to write buffer")
+				return
+			end
+		end
+	elseif vim.bo[cur_buf].modified and not opts.force then
+		vim.api.nvim_err_writeln("E37: No write since last change (add ! to override)")
+		return
+	end
+
+	-- If this file was opened from a terminal in this window, return to the terminal
+	if term_buf and vim.api.nvim_buf_is_valid(term_buf) and vim.bo[term_buf].buftype == "terminal" then
+		vim.w[cur_win].terminal_origin = nil
+
+		-- Switch window back to the terminal buffer
+		vim.api.nvim_win_set_buf(cur_win, term_buf)
+
+		-- Clean up the file buffer if it's not displayed anywhere else
+		if not vim.bo[cur_buf].modified or opts.force then
+			local shown_elsewhere = false
+			for _, w in ipairs(vim.api.nvim_list_wins()) do
+				if w ~= cur_win and vim.api.nvim_win_get_buf(w) == cur_buf then
+					shown_elsewhere = true
+					break
+				end
+			end
+			if not shown_elsewhere and vim.bo[cur_buf].buftype == "" then
+				pcall(vim.cmd, "bdelete! " .. cur_buf)
+			end
+		end
+
+		-- Return directly to terminal input mode
+		vim.cmd("startinsert")
+		return
+	end
+
+	-- Fallback: standard quit behavior
+	local cmd = "quit"
+	if opts.write then cmd = "wq" end
+	if opts.force then cmd = cmd .. "!" end
+	pcall(vim.cmd, cmd)
+end
+
+vim.api.nvim_create_user_command("SmartQuit", function(ctx)
+	smart_quit({ force = ctx.bang })
+end, { bang = true, desc = "Quit file or return to terminal split" })
+
+vim.api.nvim_create_user_command("SmartWriteQuit", function(ctx)
+	smart_quit({ write = true, force = ctx.bang })
+end, { bang = true, desc = "Save and quit file or return to terminal split" })
+
+vim.api.nvim_create_user_command("TermEdit", function(ctx)
+	local cur_win = vim.api.nvim_get_current_win()
+	local cur_buf = vim.api.nvim_get_current_buf()
+	if vim.bo[cur_buf].buftype == "terminal" then
+		vim.w[cur_win].terminal_origin = cur_buf
+	end
+	vim.cmd("edit " .. vim.fn.fnameescape(ctx.args))
+end, { nargs = 1, complete = "file", desc = "Edit file in place of terminal split" })
+
+vim.api.nvim_create_autocmd("BufEnter", {
+	pattern = "*",
+	callback = function(ev)
+		local cur_win = vim.api.nvim_get_current_win()
+		local cur_buf = ev.buf
+		local prev_buf = vim.fn.bufnr("#")
+		if vim.bo[cur_buf].buftype ~= "terminal" and prev_buf > 0 and vim.api.nvim_buf_is_valid(prev_buf) then
+			if vim.bo[prev_buf].buftype == "terminal" then
+				vim.w[cur_win].terminal_origin = prev_buf
+			end
+		end
+	end,
+})
+
+vim.cmd([[
+  cnoreabbrev <expr> q (getcmdtype() ==# ':' && getcmdline() ==# 'q') ? 'SmartQuit' : 'q'
+  cnoreabbrev <expr> q! (getcmdtype() ==# ':' && getcmdline() ==# 'q!') ? 'SmartQuit!' : 'q!'
+  cnoreabbrev <expr> quit (getcmdtype() ==# ':' && getcmdline() ==# 'quit') ? 'SmartQuit' : 'quit'
+  cnoreabbrev <expr> quit! (getcmdtype() ==# ':' && getcmdline() ==# 'quit!') ? 'SmartQuit!' : 'quit!'
+  cnoreabbrev <expr> wq (getcmdtype() ==# ':' && getcmdline() ==# 'wq') ? 'SmartWriteQuit' : 'wq'
+  cnoreabbrev <expr> wq! (getcmdtype() ==# ':' && getcmdline() ==# 'wq!') ? 'SmartWriteQuit!' : 'wq!'
+  cnoreabbrev <expr> x (getcmdtype() ==# ':' && getcmdline() ==# 'x') ? 'SmartWriteQuit' : 'x'
+  cnoreabbrev <expr> x! (getcmdtype() ==# ':' && getcmdline() ==# 'x!') ? 'SmartWriteQuit!' : 'x!'
+]])
+
+vim.keymap.set("n", "ZZ", function() smart_quit({ write = true }) end, { desc = "Save and quit or return to terminal" })
+vim.keymap.set("n", "ZQ", function() smart_quit({ force = true }) end, { desc = "Quit without saving or return to terminal" })
+
+
 -- ── LSP ──
 require("lsp")
 
