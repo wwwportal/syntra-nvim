@@ -91,14 +91,14 @@ fi
 RESOLVED_FILE="$(readlink -f "$FILE_ARG")"
 
 # Build prompt
-SYSTEM_PROMPT='You are a strict, formal logical error detector and compiler linter (lgcc).
-Analyze the provided source file for logic bugs, invariant violations, unhandled bounds/errors, and semantic discrepancies.
-Ignore syntax, formatting, naming conventions, and cosmetic issues.
-Point out any flaws with their line numbers.
-If logic errors exist, output one line per error in this format:
-[line <line_number>] <concise description of logic flaw>
-If no logic errors exist, output:
-CLEAN'
+SYSTEM_PROMPT='Analyze the source code provided below for logic bugs, invariant violations, and bugs.
+Do NOT use tools to read files from disk; analyze only the provided code.
+Ignore syntax, formatting, and naming conventions.
+Point out any flaws with their line numbers. If flaws exist, state:
+[line <number>] <description of flaw>
+If there are no logic errors, state CLEAN.'
+
+NUMBERED_SRC="$(awk '{print NR ": " $0}' "$RESOLVED_FILE")"
 
 PROMPT_BODY=""
 if [[ -n "$SPEC_FILE" ]]; then
@@ -109,11 +109,11 @@ if [[ -n "$SPEC_FILE" ]]; then
     PROMPT_BODY="--- SPECIFICATION DOCUMENT ---
 $(cat "$SPEC_FILE")
 
---- SOURCE FILE UNDER TEST: $(basename "$RESOLVED_FILE") ---
-$(cat "$RESOLVED_FILE")"
+--- SOURCE CODE (line numbers prefixed) ---
+$NUMBERED_SRC"
 else
-    PROMPT_BODY="--- SOURCE FILE UNDER TEST: $(basename "$RESOLVED_FILE") ---
-$(cat "$RESOLVED_FILE")"
+    PROMPT_BODY="--- SOURCE CODE (line numbers prefixed) ---
+$NUMBERED_SRC"
 fi
 
 TMP_OUTPUT="$(mktemp)"
