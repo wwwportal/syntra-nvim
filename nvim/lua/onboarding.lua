@@ -8,29 +8,36 @@ local features = {
     {
         id = "lgcc",
         name = "lgcc Diagnostic Engine",
-        desc = "Local LLM semantic compiler that detects logic bugs via vim.diagnostic",
+        desc = "Logical compiler via OpenCode/OpenRouter (reports to Quickfix, no inline noise)",
         enabled = true,
         check_dep = function() return vim.fn.executable("lgcc") == 1 end,
         dep_hint = "executable: lgcc (in ~/.local/bin/lgcc)",
     },
     {
         id = "whisper",
-        name = "Whisper Voice Transcription",
-        desc = "Voice-to-text dictation into active buffer via whisper.cpp / whisper",
+        name = "Faster-Whisper Voice Transcription (:v)",
+        desc = "Voice-to-text dictation into active buffer via faster-whisper",
         enabled = true,
-        check_dep = function() return vim.fn.executable("whisper") == 1 or vim.fn.executable("whisper-cli") == 1 end,
-        dep_hint = "requires: whisper-cli / whisper.cpp",
+        check_dep = function()
+            local py = vim.fn.expand("~/myenv/bin/python")
+            if vim.fn.filereadable(py) == 1 then
+                local out = vim.fn.system(py .. " -c 'import faster_whisper' 2>&1")
+                return vim.v.shell_error == 0
+            end
+            return false
+        end,
+        dep_hint = "requires: faster-whisper in ~/myenv or python environment",
     },
     {
         id = "voice_assistant",
-        name = "Speech-to-Speech Agent",
-        desc = "Full audio assistant loop in nvim: Voice -> Qwen (agent) -> Piper TTS",
+        name = "Speech-to-Speech Assistant",
+        desc = "Full audio assistant loop: Faster-Whisper -> OpenCode/OpenRouter -> Piper TTS",
         enabled = true,
         check_dep = function()
             local agent_script = vim.fn.expand("~/code/agent/scripts/start.sh")
-            return vim.fn.filereadable(agent_script) == 1
+            return vim.fn.filereadable(agent_script) == 1 and vim.fn.executable("opencode") == 1
         end,
-        dep_hint = "requires: ~/code/agent + piper",
+        dep_hint = "requires: ~/code/agent + opencode + piper",
     },
     {
         id = "tasks",
@@ -42,11 +49,11 @@ local features = {
     },
     {
         id = "lean4",
-        name = "Lean 4 Formal Verification",
-        desc = "Theorem proving LSP and Lean Infoview via lean.nvim",
-        enabled = true,
+        name = "Lean 4 Interactive LSP (Infoview)",
+        desc = "Optional interactive theorem proving LSP (unneeded if using lean-dojo/pantograph)",
+        enabled = false,
         check_dep = function() return vim.fn.executable("elan") == 1 or vim.fn.executable("lean") == 1 end,
-        dep_hint = "executable: elan / lean4",
+        dep_hint = "executable: elan / lean4 (disabled by default to save RAM)",
     },
 }
 
