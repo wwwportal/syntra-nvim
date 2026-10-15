@@ -31,7 +31,7 @@ function M.start_transcription()
         vim.fn.jobstop(stream_pid)
         stream_pid = nil
         if timer then timer:stop(); timer = nil end
-        vim.notify(":v continuous mode stopped", vim.log.levels.INFO)
+        vim.notify(":listen continuous mode stopped", vim.log.levels.INFO)
         return
     end
 
@@ -43,7 +43,7 @@ function M.start_transcription()
         stream_pid = nil
         return
     end
-    vim.notify(":v continuous listening started (run :v again to stop)", vim.log.levels.INFO)
+    vim.notify(":listen continuous listening started (run :listen again to stop)", vim.log.levels.INFO)
     timer = vim.loop.new_timer()
     timer:start(500, 500, vim.schedule_wrap(function()
         if not vim.api.nvim_buf_is_valid(0) then return end
@@ -72,9 +72,9 @@ function M.start_transcription()
 end
 
 function M.setup()
-    vim.api.nvim_create_user_command("v", function()
+    vim.api.nvim_create_user_command("listen", function()
         M.start_transcription()
-    end, { desc = "Voice transcription (:v)" })
+    end, { desc = "Voice transcription (:listen)" })
 
     vim.keymap.set("n", "<leader>v", function()
         M.start_transcription()
