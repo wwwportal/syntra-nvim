@@ -633,6 +633,9 @@ require("onboarding").setup()
 -- ── Voice Transcription (:v) ──
 require("voice").setup()
 
+-- ── Lgcc Voice Output (:Lgcc -s) ──
+require("voice_output").setup()
+
 
 -- ── Plugin manager (lazy.nvim) ──
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
