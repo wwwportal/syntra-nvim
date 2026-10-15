@@ -149,9 +149,10 @@ function M.lint(opts)
     vim.cmd("silent write")
   end
 
-  local file_basename = vim.fn.fnamemodify(filepath, ":t")
-
   -- Assemble source code or hermetic dependency bundle
+  -- TODO(lgcc-compressed-ir | tier:B | depends_on:[lgcc-cli-router-hook] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
+  -- Description: Implement a compact AST/interface representation (symbol dependency graph and skeletonized type stubs) to keep full repository context in the model's active window without blowing up token limits.
+  -- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
   local code_section = ""
   if opts.bundle then
     local bscript = find_bundle_script()
@@ -313,6 +314,9 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
 
   while i <= #fargs do
     local arg = fargs[i]
+    -- TODO(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
+    -- Description: Integrate bundle_ir.py --route --budget into lgcc.lua with optional --budget argument for dynamic context allocation.
+    -- Criterion: review: ":Lgcc --budget 4000 dynamically queries router and passes knapsack-allocated IR context"
     if arg == "-s" or arg == "--speak" or arg == "speak" then
       speak = true
     elseif arg == "-b" or arg == "--bundle" or arg == "bundle" then
@@ -359,5 +363,9 @@ end, {
   end,
   desc = "Run logical compiler (lgcc) with live status ticker, Quickfix results, and agy/opencode failover; use -s for voice summary, -b for dependency bundling",
 })
+
+-- TODO(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
+-- Description: Extend lgcc to scan entire directories and multi-file projects using the compressed intermediate representation to detect cross-module invariant violations and systemic flaws.
+-- Criterion: review: "lgcc directory execution passes compressed project context and populates Quickfix with multi-file error locations"
 
 return M
