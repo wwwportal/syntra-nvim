@@ -16,8 +16,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
   end,
 })
 
--- Keep background diagnostic display quiet for general LSP, reserving
--- clear, high-contrast diagnostics for :Lgcc logical compilation.
+-- Keep background diagnostic display clean and focused.
 vim.diagnostic.config({
   signs = true,
   underline = true,

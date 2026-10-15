@@ -15,16 +15,11 @@ echo "==> Preparing build staging directory..."
 rm -rf "$REPO_ROOT/build" "$OUTPUT_DEB"
 mkdir -p "$STAGING_DIR/DEBIAN"
 mkdir -p "$STAGING_DIR/usr/share/syntra-nvim/config"
-mkdir -p "$STAGING_DIR/usr/local/bin"
 mkdir -p "$STAGING_DIR/etc/skel/.config/nvim"
 
 echo "==> Bundling Neovim configuration..."
 cp -r "$REPO_ROOT/nvim/"* "$STAGING_DIR/usr/share/syntra-nvim/config/"
 cp -r "$REPO_ROOT/nvim/"* "$STAGING_DIR/etc/skel/.config/nvim/"
-
-echo "==> Bundling lgcc logical compiler..."
-cp "$REPO_ROOT/bin/lgcc" "$STAGING_DIR/usr/local/bin/lgcc"
-chmod +x "$STAGING_DIR/usr/local/bin/lgcc"
 
 echo "==> Generating DEBIAN/control..."
 cat << EOF > "$STAGING_DIR/DEBIAN/control"
@@ -35,9 +30,9 @@ Priority: optional
 Architecture: all
 Depends: git, curl, ripgrep, python3, tar, gzip, ca-certificates
 Maintainer: Syntra <support@syntra.io>
-Description: High-performance Neovim setup with monochrome theme and lgcc logical compiler
- Provisions modern Neovim (v0.10+), Lean 4 hooks, custom monochrome
- window management, and native lgcc logical diagnostic integration.
+Description: High-performance Neovim setup with monochrome aesthetics and tiling
+ Provisions modern Neovim (v0.10+), Lean 4 formal verification hooks,
+ and custom monochrome window and terminal tiling multiplexer.
 EOF
 
 echo "==> Generating DEBIAN/postinst..."
@@ -89,27 +84,12 @@ if [ -n "$TARGET_USER" ] && [ -d "$TARGET_HOME" ]; then
     chown -R "$TARGET_USER:$TARGET_USER" "$USER_NVIM_DIR" 2>/dev/null || true
     chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/share/nvim" 2>/dev/null || true
 
-    # Symlink lgcc to ~/.local/bin/lgcc as well
-    mkdir -p "$TARGET_HOME/.local/bin"
-    ln -sf /usr/local/bin/lgcc "$TARGET_HOME/.local/bin/lgcc" 2>/dev/null || true
-    chown -h "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.local/bin/lgcc" 2>/dev/null || true
 fi
 
 echo "==> [syntra-nvim] Installation complete! Run 'nvim' to start."
 exit 0
 EOF
 chmod 755 "$STAGING_DIR/DEBIAN/postinst"
-
-echo "==> Generating DEBIAN/prerm..."
-cat << 'EOF' > "$STAGING_DIR/DEBIAN/prerm"
-#!/usr/bin/env bash
-set -e
-if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
-    rm -f /usr/local/bin/lgcc
-fi
-exit 0
-EOF
-chmod 755 "$STAGING_DIR/DEBIAN/prerm"
 
 echo "==> Building Debian package..."
 dpkg-deb --build "$STAGING_DIR" "$OUTPUT_DEB"
