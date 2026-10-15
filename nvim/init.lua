@@ -512,6 +512,18 @@ end
 -- $EDITOR, or :edit), quitting the file (:q, :wq, :x, :q!, ZZ, ZQ) returns to the
 -- terminal split instead of closing the split/window.
 
+local function is_buf_displayed_elsewhere(buf, exclude_win)
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		return false
+	end
+	for _, w in ipairs(vim.api.nvim_list_wins()) do
+		if w ~= exclude_win and vim.api.nvim_win_get_buf(w) == buf then
+			return true
+		end
+	end
+	return false
+end
+
 local function smart_quit(opts)
 	opts = opts or {}
 	local cur_win = vim.api.nvim_get_current_win()
@@ -519,12 +531,15 @@ local function smart_quit(opts)
 
 	-- Check if this window was previously showing a terminal buffer
 	local term_buf = vim.w[cur_win].terminal_origin
-	if not term_buf or not vim.api.nvim_buf_is_valid(term_buf) or vim.bo[term_buf].buftype ~= "terminal" then
+	if term_buf and (not vim.api.nvim_buf_is_valid(term_buf) or vim.bo[term_buf].buftype ~= "terminal" or is_buf_displayed_elsewhere(term_buf, cur_win)) then
+		term_buf = nil
+	end
+
+	-- Fallback to alternate buffer only if it's a valid terminal AND NOT displayed in another window
+	if not term_buf then
 		local alt = vim.fn.bufnr("#")
-		if alt > 0 and vim.api.nvim_buf_is_valid(alt) and vim.bo[alt].buftype == "terminal" then
+		if alt > 0 and vim.api.nvim_buf_is_valid(alt) and vim.bo[alt].buftype == "terminal" and not is_buf_displayed_elsewhere(alt, cur_win) then
 			term_buf = alt
-		else
-			term_buf = nil
 		end
 	end
 
@@ -597,12 +612,16 @@ vim.api.nvim_create_autocmd("BufEnter", {
 	callback = function(ev)
 		local cur_win = vim.api.nvim_get_current_win()
 		local cur_buf = ev.buf
-		local prev_buf = vim.fn.bufnr("#")
-		if vim.bo[cur_buf].buftype ~= "terminal" and prev_buf > 0 and vim.api.nvim_buf_is_valid(prev_buf) then
-			if vim.bo[prev_buf].buftype == "terminal" then
-				vim.w[cur_win].terminal_origin = prev_buf
+		local prev_win_buf = vim.w[cur_win].prev_window_buf
+
+		-- If this window just switched away from a terminal buffer, record it as terminal_origin
+		if prev_win_buf and prev_win_buf ~= cur_buf and vim.api.nvim_buf_is_valid(prev_win_buf) then
+			if vim.bo[prev_win_buf].buftype == "terminal" and not is_buf_displayed_elsewhere(prev_win_buf, cur_win) then
+				vim.w[cur_win].terminal_origin = prev_win_buf
 			end
 		end
+
+		vim.w[cur_win].prev_window_buf = cur_buf
 	end,
 })
 
