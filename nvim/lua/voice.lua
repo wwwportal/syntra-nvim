@@ -67,7 +67,7 @@ function M.start_transcription()
                 end
                 vim.api.nvim_buf_set_lines(cur_buf, row - 1, row, false, { before .. text .. sep .. after })
                 vim.bo[cur_buf].modifiable = was_mod
-                col = #before + #text
+                col = #before + #text + #sep
                 inserted = true
             end
         end
