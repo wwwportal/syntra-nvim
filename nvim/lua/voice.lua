@@ -12,7 +12,7 @@ function M.is_active()
         return true
     end
     -- Check system process in case process was started outside or before reload
-    local check = vim.fn.system("pgrep -f syntra_voice_stream.py 2>/dev/null")
+    local check = vim.fn.system("pgrep -f '[s]yntra_voice_stream.py' 2>/dev/null")
     return vim.v.shell_error == 0 and check:match("%d+") ~= nil
 end
 
