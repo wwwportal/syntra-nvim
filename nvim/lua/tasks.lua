@@ -426,58 +426,177 @@ local function get_comment_leader(bufnr)
   return "-- "
 end
 
-local function resolve_target_file(spec_file, origin_win)
-  if spec_file and spec_file ~= "" then
-    local path = vim.fn.fnamemodify(spec_file, ":p")
-    return path
+--- Semantically locate the best file and function line for a given task description
+local function locate_target_file_and_line(repo_root, description)
+  if not repo_root or repo_root == "" then
+    return nil, 1
   end
 
-  -- 1. Check if origin_win already has a regular file
+  local git_cmd = string.format("git -C %s ls-files 2>/dev/null", vim.fn.shellescape(repo_root))
+  local file_list_raw = vim.fn.system(git_cmd)
+  if vim.v.shell_error ~= 0 or not file_list_raw or file_list_raw == "" then
+    return nil, 1
+  end
+
+  local valid_exts = { lua=true, py=true, sh=true, bash=true, cpp=true, c=true, h=true, hpp=true, rs=true, go=true, js=true, ts=true, lean=true }
+  local candidate_files = {}
+  local scores = {}
+
+  for line in file_list_raw:gmatch("[^\r\n]+") do
+    local ext = vim.fn.fnamemodify(line, ":e"):lower()
+    if valid_exts[ext] then
+      table.insert(candidate_files, line)
+      scores[line] = 0
+    end
+  end
+
+  if #candidate_files == 0 then
+    return nil, 1
+  end
+
+  local stop_words = {
+    a=true, an=true, the=true, ["and"]=true, ["for"]=true, ["with"]=true,
+    ["that"]=true, ["this"]=true, ["from"]=true, ["when"]=true, ["into"]=true,
+    file=true, task=true, code=true, make=true, sure=true, need=true,
+  }
+  local keywords = {}
+  for w in description:lower():gmatch("[a-z0-9_%-]+") do
+    if #w > 2 and not stop_words[w] then
+      table.insert(keywords, w)
+    end
+  end
+
+  for _, f in ipairs(candidate_files) do
+    local f_lower = f:lower()
+    for _, kw in ipairs(keywords) do
+      if f_lower:find(kw, 1, true) then
+        scores[f] = scores[f] + 20
+      end
+    end
+  end
+
+  local rg_bin = vim.fn.expand("~/.local/bin/rg")
+  if vim.fn.executable(rg_bin) ~= 1 then
+    rg_bin = "rg"
+  end
+
+  for i = 1, math.min(#keywords, 6) do
+    local kw = keywords[i]
+    local rg_cmd = string.format("%s -l -i %s %s 2>/dev/null", rg_bin, vim.fn.shellescape(kw), vim.fn.shellescape(repo_root))
+    local out = vim.fn.system(rg_cmd)
+    if vim.v.shell_error == 0 and out and out ~= "" then
+      for hit in out:gmatch("[^\r\n]+") do
+        local rel = vim.fn.fnamemodify(hit, ":s?" .. repo_root .. "/??")
+        if scores[rel] then
+          scores[rel] = scores[rel] + 5
+        end
+      end
+    end
+  end
+
+  local best_file = nil
+  local max_score = -1
+  for _, f in ipairs(candidate_files) do
+    if scores[f] > max_score then
+      max_score = scores[f]
+      best_file = f
+    end
+  end
+
+  if not best_file or max_score == 0 then
+    best_file = candidate_files[1]
+  end
+
+  local fullpath = repo_root .. "/" .. best_file
+  local target_line = 1
+
+  if vim.fn.filereadable(fullpath) == 1 then
+    local file_lines = vim.fn.readfile(fullpath)
+    local best_func_line = nil
+    local best_func_score = 0
+    local cur_func_line = 1
+
+    for lnum, line in ipairs(file_lines) do
+      local is_def = line:match("^[ \t]*function%s+([%w_.:]+)")
+        or line:match("^[ \t]*local%s+function%s+([%w_]+)")
+        or line:match("^[ \t]*def%s+([%w_]+)")
+        or line:match("^[ \t]*class%s+([%w_]+)")
+
+      if is_def then
+        cur_func_line = lnum
+      end
+
+      local line_lower = line:lower()
+      local line_score = 0
+      for _, kw in ipairs(keywords) do
+        if line_lower:find(kw, 1, true) then
+          line_score = line_score + 1
+        end
+      end
+
+      if line_score > best_func_score then
+        best_func_score = line_score
+        best_func_line = cur_func_line
+      end
+    end
+
+    if best_func_line and best_func_score > 0 then
+      target_line = best_func_line
+    end
+  end
+
+  return fullpath, target_line
+end
+
+local function resolve_target_file(spec_file, description, origin_win)
+  if spec_file and spec_file ~= "" then
+    local path = vim.fn.fnamemodify(spec_file, ":p")
+    return path, 1
+  end
+
+  -- Determine active repository root
+  local repo_root = nil
+  local lint_script = find_lint_tasks()
+  if lint_script then
+    repo_root = vim.fs.root(lint_script, ".git") or vim.fn.fnamemodify(lint_script, ":p:h:h")
+  end
+
+  if not repo_root or repo_root == "" then
+    if origin_win and vim.api.nvim_win_is_valid(origin_win) then
+      local obuf = vim.api.nvim_win_get_buf(origin_win)
+      local obuf_name = vim.api.nvim_buf_get_name(obuf)
+      if obuf_name ~= "" and not obuf_name:match("^term://") then
+        repo_root = vim.fs.root(obuf_name, ".git")
+      end
+    end
+  end
+
+  if not repo_root or repo_root == "" then
+    repo_root = vim.fs.root(0, ".git") or vim.fn.getcwd()
+  end
+
+  local best_file, target_line = locate_target_file_and_line(repo_root, description)
+  if best_file then
+    return best_file, target_line
+  end
+
   if origin_win and vim.api.nvim_win_is_valid(origin_win) then
     local obuf = vim.api.nvim_win_get_buf(origin_win)
     if vim.bo[obuf].buftype == "" and vim.api.nvim_buf_get_name(obuf) ~= "" then
-      return vim.api.nvim_buf_get_name(obuf)
+      return vim.api.nvim_buf_get_name(obuf), 1
     end
   end
 
-  -- 2. Check current window
-  local cur_win = vim.api.nvim_get_current_win()
-  local cur_buf = vim.api.nvim_win_get_buf(cur_win)
-  if vim.bo[cur_buf].buftype == "" and vim.api.nvim_buf_get_name(cur_buf) ~= "" then
-    return vim.api.nvim_buf_get_name(cur_buf)
-  end
-
-  -- 3. Check alternate buffer (#)
-  local alt = vim.fn.bufnr("#")
-  if alt > 0 and vim.api.nvim_buf_is_valid(alt) and vim.bo[alt].buftype == "" and vim.api.nvim_buf_get_name(alt) ~= "" then
-    return vim.api.nvim_buf_get_name(alt)
-  end
-
-  -- 4. Check other windows displaying regular files
-  for _, w in ipairs(vim.api.nvim_list_wins()) do
-    local b = vim.api.nvim_win_get_buf(w)
-    if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
-      return vim.api.nvim_buf_get_name(b)
-    end
-  end
-
-  -- 5. Check loaded buffers
-  for _, b in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
-      return vim.api.nvim_buf_get_name(b)
-    end
-  end
-
-  return nil
+  return nil, 1
 end
 
-local function insert_task_into_buf(bufnr, origin_win, spec)
+local function insert_task_into_buf(bufnr, origin_win, spec, target_line)
   local leader = get_comment_leader(bufnr)
   local line_count = vim.api.nvim_buf_line_count(bufnr)
 
-  local row = 1
-  if origin_win and vim.api.nvim_win_is_valid(origin_win) and vim.api.nvim_win_get_buf(origin_win) == bufnr then
-    row = vim.api.nvim_win_get_cursor(origin_win)[1]
+  local row = target_line or 1
+  if row > line_count then
+    row = math.max(1, line_count)
   end
 
   -- Ensure unique ID within buffer
@@ -522,7 +641,7 @@ local function insert_task_into_buf(bufnr, origin_win, spec)
 
   local fname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":~:.")
   vim.api.nvim_echo({
-    { string.format("● Added %s task '%s' to %s:%d", spec.kind, spec.id, fname, task_line), "ModeMsg" }
+    { string.format("● Placed %s task '%s' into %s:%d", spec.kind, spec.id, fname, task_line), "ModeMsg" }
   }, false, {})
 
   -- 2. Open bottom split with task list, with cursor on the newly created task
@@ -541,21 +660,21 @@ function M.add_task(arg_str, origin_win)
     return
   end
 
-  local target_file = resolve_target_file(spec.file, origin_win)
+  local target_file, target_line = resolve_target_file(spec.file, spec.description, origin_win)
   if target_file then
     local bufnr = vim.fn.bufnr(target_file)
     if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
       bufnr = vim.fn.bufadd(target_file)
       vim.fn.bufload(bufnr)
     end
-    insert_task_into_buf(bufnr, origin_win, spec)
+    insert_task_into_buf(bufnr, origin_win, spec, target_line)
   else
     vim.ui.input({ prompt = "Target source file for task: ", completion = "file" }, function(input)
       if input and vim.trim(input) ~= "" then
         local file = vim.fn.fnamemodify(vim.trim(input), ":p")
         local bufnr = vim.fn.bufadd(file)
         vim.fn.bufload(bufnr)
-        insert_task_into_buf(bufnr, origin_win, spec)
+        insert_task_into_buf(bufnr, origin_win, spec, 1)
       else
         vim.notify("Cancelled: no source file specified", vim.log.levels.WARN)
       end
