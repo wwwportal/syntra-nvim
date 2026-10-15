@@ -1,0 +1,9 @@
+# Resolution Log: Calendar Descoping
+Task ID: unified-tasks-calendar
+Date: 2026-10-15
+Author: Yassine
+
+## Resolution Details
+- unified-tasks-calendar formally migrated and descoped to unified-tasks.
+- Google Calendar integration removed from task scope to avoid external OAuth/token dependencies.
+- Unified task management now focuses strictly on in-tree repository DAGs and local Taskwarrior tasks.
