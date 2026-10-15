@@ -630,7 +630,8 @@ require("tasks")
 -- ── First-Time Feature Checklist & Onboarding ──
 require("onboarding").setup()
 
--- ── Voice Transcription (:v) ──
+vim.opt.rtp:append("/home/yassine/code/syntra-nvim/nvim")
+-- ── Voice Transcription (:Listen) ──
 require("voice").setup()
 
 -- ── Lgcc Voice Output (:Lgcc -s) ──
