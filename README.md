@@ -1,17 +1,17 @@
 # Syntra Neovim (`syntra-nvim`)
 
-High-performance, minimalist Neovim environment with:
-- **Monochrome Aesthetics**: Pure black and white, zero syntax distractions, light grey selections.
-- **`lgcc` Logical Compiler**: Native `:Lgcc` async diagnostic engine powered by local LLM (`qwen2.5-coder-7b`) or OpenCode.
+High-performance, minimalist Neovim environment designed for distraction-free coding and formal verification:
+- **Monochrome Aesthetics**: Pure black and white, zero syntax noise, high-contrast readability.
 - **Tiling & Terminal Multiplexing**: Hyprland-style seamless split management (`Alt+h/j/k/l`, `Alt+q`, `Alt+z`).
 - **Formal Verification Ready**: Native hooks for Lean 4 theorem proving and language servers.
+- **Persistent Shell State**: Embedded terminals automatically track directory changes across splits.
 
 ---
 
 ## Installation
 
 ### Method 1: The One-Liner (Registers APT & Installs)
-On any fresh Ubuntu or Debian machine:
+On any Ubuntu or Debian system:
 ```bash
 curl -fsSL https://wwwportal.github.io/syntra-nvim/setup.sh | sudo bash
 ```
@@ -50,17 +50,23 @@ sudo apt upgrade syntra-nvim
 
 ---
 
-## Features & Usage
+## Features & Keybindings
 
-### 1. Logical Error Compilation (`:Lgcc`)
-* `:Lgcc`: Runs async logical error analysis on the active buffer.
-* `:Lgcc spec <file>`: Analyzes logic against a formal specification document.
-* `:Lgcc web`: Runs logic analysis with OpenCode web search.
-* `:Lgcc clear`: Clears all inline diagnostic markers.
-
-### 2. Window & Split Navigation
-* `Alt + Left/Right/Up/Down`: Seamless focus navigation across splits.
-* `Alt + h/j/k/l`: Swap active split with neighbor.
-* `Alt + Shift + Left/Right/Up/Down`: Resize split borders.
-* `Alt + z`: Maximize / zoom current split (press again to restore).
+### 1. Window & Split Navigation
+* `Alt + Left/Right/Up/Down`: Seamless focus navigation across splits in any mode.
+* `Alt + h/j/k/l`: Swap active split with adjacent neighbor.
+* `Alt + Shift + Left/Right/Up/Down` or `Ctrl + Alt + Arrows`: Resize split borders.
+* `Alt + z`: Maximize / zoom current split (press again to restore original layout).
 * `Alt + q` / `Alt + w`: Close current split.
+* `Alt + +` (`Alt + Shift + =`): Split right with a new terminal.
+* `Alt + _` (`Alt + Shift + -`): Split down with a new terminal.
+
+### 2. Terminal Integration
+* Starts directly into a clean terminal when opened without file arguments.
+* Terminal sessions inherit the working directory of your last active split.
+* `Ctrl + Shift + Up/Down`: Scroll terminal scrollback.
+* `Esc`: Drops to Normal mode when at the shell prompt, passes directly through when interactive CLI apps are running.
+
+### 3. Lean 4 & LSP Support
+* Buffer hooks for `gd` (definition), `gD` (declaration), `gr` (references), and `K` (hover).
+* Streamlined diagnostics with clean borders and floating documentation.
