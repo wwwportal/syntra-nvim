@@ -8,9 +8,17 @@
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior and in-tree source TODOs.
 -- Criterion: review: ":Tasks displays integrated agenda view with source TODOs and Taskwarrior tasks"
 
--- TODO(lgcc-dep-bundle | tier:B | depends_on:[lgcc-native-lua] | blocks:[lgcc-task-synthesizer]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
+-- TODO(lgcc-dep-bundle | tier:B | depends_on:[lgcc-native-lua] | blocks:[lgcc-task-synthesizer, lgcc-compressed-ir]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
 -- Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
 -- Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
+
+-- TODO(lgcc-compressed-ir | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
+-- Description: Implement a compact AST/interface representation (symbol dependency graph and skeletonized type stubs) to keep full repository context in the model's active window without blowing up token limits.
+-- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
+
+-- TODO(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
+-- Description: Extend lgcc to scan entire directories and multi-file projects using the compressed intermediate representation to detect cross-module invariant violations and systemic flaws.
+-- Criterion: review: "lgcc directory execution passes compressed project context and populates Quickfix with multi-file error locations"
 
 -- TODO(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
