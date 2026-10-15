@@ -4,10 +4,10 @@ Architecture: all
 Maintainer: Syntra <support@syntra.io>
 Depends: git, curl, ripgrep, python3, tar, gzip, ca-certificates
 Filename: ./syntra-nvim_1.0.0_all.deb
-Size: 12362
-MD5sum: 1b8eefdf83fd97ca094751b03dca04b6
-SHA1: 87a599ef88b9ce5b71b367f3e31d5f98071f0496
-SHA256: 303f4a767cd58c14233fbf91da25b6a9654cdf99e6ee902aaf6c99323af41d9f
+Size: 14292
+MD5sum: 8b9580edadcbaaf065ca3687ce6112ec
+SHA1: f4a3e39f073ee3d55128047b984156da1eee7e94
+SHA256: c6755288bbd330be10f863df7ad81b10bbada9a4a3de8fc6078d5acb276aeb05
 Section: editors
 Priority: optional
 Description: High-performance Neovim setup with monochrome aesthetics and tiling

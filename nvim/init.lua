@@ -627,6 +627,9 @@ require("lsp")
 -- ── Tasks Navigator (Prover DAG & Taskwarrior) ──
 require("tasks")
 
+-- ── First-Time Feature Checklist & Onboarding ──
+require("onboarding").setup()
+
 
 -- ── Plugin manager (lazy.nvim) ──
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
