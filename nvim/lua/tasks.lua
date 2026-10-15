@@ -309,18 +309,245 @@ local function show_taskwarrior(origin_win)
   }, false, {})
 end
 
---- Main entry point for :Tasks command
---- @param target? string "prover" | "syntra" | "syntra-nvim" | "tw" | "taskwarrior" | nil
-function M.tasks(target)
-  local origin_win = vim.api.nvim_get_current_win()
-  target = target and vim.trim(target):lower() or ""
+--- Parse the argument string for `:Tasks add`
+--- Returns spec table or (nil, error_message)
+local function parse_task_spec(args_str)
+  local str = vim.trim(args_str or "")
+  if str == "" then
+    return nil, "Usage: :Tasks add [file] <TODO|FIXME>[: <description>]"
+  end
 
+  local target_file = nil
+  local first_word, rest = str:match("^(%S+)%s+(.*)$")
+  if first_word and rest and (first_word:find("[./]") or vim.fn.filereadable(first_word) == 1) then
+    target_file = first_word
+    str = rest
+  end
+
+  local kind, custom_id, custom_attrs, desc = str:match("^(%a+)%(([^|]+)|?([^)]*)%)%s*:%s*(.+)$")
+  local tier = "B"
+  local blocks = nil
+  local depends_on = nil
+
+  if kind then
+    kind = kind:upper()
+    custom_id = vim.trim(custom_id)
+    if custom_attrs and custom_attrs ~= "" then
+      local t = custom_attrs:match("tier:([ABC])")
+      if t then tier = t end
+      blocks = custom_attrs:match("blocks:%[[^%]]*%]")
+      depends_on = custom_attrs:match("depends_on:%[[^%]]*%]")
+    end
+    return {
+      file = target_file,
+      kind = (kind == "FIXME") and "FIXME" or "TODO",
+      id = custom_id,
+      tier = tier,
+      title = vim.trim(desc),
+      description = vim.trim(desc),
+      blocks = blocks,
+      depends_on = depends_on,
+    }
+  end
+
+  local k, d = str:match("^(%a+)%s*:%s*(.+)$")
+  if not k then
+    k, d = str:match("^(%a+)%s+(.+)$")
+  end
+
+  if not k or not d then
+    return nil, "Invalid format. Expected: :Tasks add <TODO|FIXME>:<description>"
+  end
+
+  k = k:upper()
+  if k ~= "TODO" and k ~= "FIXME" then
+    return nil, string.format("Unknown task type '%s'. Expected TODO or FIXME", k)
+  end
+
+  d = vim.trim(d)
+  if d == "" then
+    return nil, "Task description cannot be empty"
+  end
+
+  local words = {}
+  local stop_words = { a=true, an=true, the=true, ["to"]=true, ["for"]=true, ["in"]=true, of=true, on=true, at=true, with=true, ["and"]=true }
+  for w in d:lower():gmatch("[a-z0-9]+") do
+    if not stop_words[w] then
+      table.insert(words, w)
+    end
+    if #words >= 4 then break end
+  end
+  if #words == 0 then
+    table.insert(words, "task")
+  end
+  local auto_id = table.concat(words, "-")
+
+  return {
+    file = target_file,
+    kind = k,
+    id = auto_id,
+    tier = "B",
+    title = d,
+    description = d,
+  }
+end
+
+local function get_comment_leader(bufnr)
+  local cs = vim.bo[bufnr].commentstring
+  if cs and cs ~= "" and cs:find("%%s") then
+    local leader = cs:gsub("%%s.*$", "")
+    leader = vim.trim(leader)
+    if leader ~= "" then
+      return leader .. " "
+    end
+  end
+
+  local name = vim.api.nvim_buf_get_name(bufnr)
+  local ext = vim.fn.fnamemodify(name, ":e"):lower()
+  if ext == "lua" then
+    return "-- "
+  elseif ext == "py" or ext == "sh" or ext == "bash" or ext == "yaml" or ext == "yml" or ext == "toml" then
+    return "# "
+  elseif ext == "c" or ext == "cpp" or ext == "h" or ext == "hpp" or ext == "rs" or ext == "go" or ext == "js" or ext == "ts" then
+    return "// "
+  end
+
+  return "-- "
+end
+
+local function resolve_target_file(spec_file)
+  if spec_file and spec_file ~= "" then
+    local path = vim.fn.fnamemodify(spec_file, ":p")
+    return path, nil
+  end
+
+  -- 1. Current window/buffer if regular file
+  local cur_win = vim.api.nvim_get_current_win()
+  local cur_buf = vim.api.nvim_win_get_buf(cur_win)
+  if vim.bo[cur_buf].buftype == "" and vim.api.nvim_buf_get_name(cur_buf) ~= "" then
+    return vim.api.nvim_buf_get_name(cur_buf), cur_win
+  end
+
+  -- 2. Check alternate buffer (#)
+  local alt = vim.fn.bufnr("#")
+  if alt > 0 and vim.api.nvim_buf_is_valid(alt) and vim.bo[alt].buftype == "" and vim.api.nvim_buf_get_name(alt) ~= "" then
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(w) == alt then
+        return vim.api.nvim_buf_get_name(alt), w
+      end
+    end
+    return vim.api.nvim_buf_get_name(alt), nil
+  end
+
+  -- 3. Check other windows displaying regular files
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    local b = vim.api.nvim_win_get_buf(w)
+    if vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
+      return vim.api.nvim_buf_get_name(b), w
+    end
+  end
+
+  -- 4. Check loaded buffers
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].buftype == "" and vim.api.nvim_buf_get_name(b) ~= "" then
+      return vim.api.nvim_buf_get_name(b), nil
+    end
+  end
+
+  return nil, nil
+end
+
+local function insert_task_into_buf(bufnr, win, spec)
+  local leader = get_comment_leader(bufnr)
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+
+  local row = 1
+  if win and vim.api.nvim_win_is_valid(win) then
+    row = vim.api.nvim_win_get_cursor(win)[1]
+  end
+
+  -- Ensure unique ID within buffer
+  local buf_text = table.concat(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), "\n")
+  local base_id = spec.id
+  local counter = 2
+  while buf_text:find("%(" .. spec.id .. "%s*|") do
+    spec.id = string.format("%s-%d", base_id, counter)
+    counter = counter + 1
+  end
+
+  local current_line = (row <= line_count) and vim.api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ""
+  local indent = current_line:match("^(%s*)") or ""
+
+  local lines = {
+    string.format("%s%s%s(%s | tier:%s): %s", indent, leader, spec.kind, spec.id, spec.tier, spec.title),
+    string.format("%s%sDescription: %s", indent, leader, spec.description),
+    string.format('%s%sCriterion: review: "%s"', indent, leader, spec.description),
+    "",
+  }
+
+  local insert_idx = math.max(0, row - 1)
+  vim.api.nvim_buf_set_lines(bufnr, insert_idx, insert_idx, false, lines)
+
+  if win and vim.api.nvim_win_is_valid(win) then
+    vim.api.nvim_set_current_win(win)
+    pcall(vim.api.nvim_win_set_cursor, win, { insert_idx + 1, #indent })
+  end
+
+  local fname = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":~:.")
+  vim.api.nvim_echo({
+    { string.format("● Added %s task '%s' to %s:%d", spec.kind, spec.id, fname, insert_idx + 1), "ModeMsg" }
+  }, false, {})
+end
+
+--- Add a task to source file: :Tasks add [file] <TODO|FIXME>:<description>
+function M.add_task(arg_str)
+  local spec, err = parse_task_spec(arg_str)
+  if not spec then
+    vim.notify(err, vim.log.levels.ERROR)
+    return
+  end
+
+  local target_file, target_win = resolve_target_file(spec.file)
+  if target_file then
+    local bufnr = vim.fn.bufnr(target_file)
+    if bufnr == -1 or not vim.api.nvim_buf_is_loaded(bufnr) then
+      bufnr = vim.fn.bufadd(target_file)
+      vim.fn.bufload(bufnr)
+    end
+    insert_task_into_buf(bufnr, target_win, spec)
+  else
+    vim.ui.input({ prompt = "Target source file for task: ", completion = "file" }, function(input)
+      if input and vim.trim(input) ~= "" then
+        local file = vim.fn.fnamemodify(vim.trim(input), ":p")
+        local bufnr = vim.fn.bufadd(file)
+        vim.fn.bufload(bufnr)
+        insert_task_into_buf(bufnr, nil, spec)
+      else
+        vim.notify("Cancelled: no source file specified", vim.log.levels.WARN)
+      end
+    end)
+  end
+end
+
+--- Main entry point for :Tasks command
+--- @param args? string "prover" | "syntra" | "syntra-nvim" | "tw" | "taskwarrior" | "add ..." | nil
+function M.tasks(args)
+  local origin_win = vim.api.nvim_get_current_win()
+  args = args and vim.trim(args) or ""
+
+  if vim.startswith(args, "add ") or args == "add" then
+    local add_args = vim.trim(args:sub(4))
+    M.add_task(add_args)
+    return
+  end
+
+  local target = args:lower()
   if target == "tw" or target == "taskwarrior" then
     show_taskwarrior(origin_win)
     return
   end
 
-  local lint_script = find_lint_tasks(target)
+  local lint_script = find_lint_tasks(target ~= "" and target or nil)
   if lint_script then
     show_repo_tasks(lint_script, origin_win)
   elseif target == "prover" or target == "syntra" or target == "syntra-nvim" then
@@ -330,16 +557,34 @@ function M.tasks(target)
   end
 end
 
+local function task_complete(arglead, cmdline)
+  local parts = vim.split(vim.trim(cmdline), "%s+")
+  if #parts == 2 and not cmdline:match("%s$") then
+    local subcmds = { "add", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
+    return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
+  elseif (#parts == 2 and cmdline:match("%s$") and parts[2] == "add") or (#parts == 3 and parts[2] == "add") then
+    local add_prefixes = { "TODO:", "FIXME:" }
+    return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, add_prefixes)
+  end
+  local subcmds = { "add", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
+  return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
+end
+
 -- Define user commands
 vim.api.nvim_create_user_command("Tasks", function(ctx)
   M.tasks(ctx.args)
 end, {
-  nargs = "?",
-  complete = function(arglead)
-    local subcmds = { "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
-    return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
-  end,
-  desc = "Navigate project TODO DAG or Taskwarrior tasks in bottom split",
+  nargs = "*",
+  complete = task_complete,
+  desc = "Navigate project TODO DAG, Taskwarrior, or add tasks",
+})
+
+vim.api.nvim_create_user_command("Task", function(ctx)
+  M.tasks(ctx.args)
+end, {
+  nargs = "*",
+  complete = task_complete,
+  desc = "Navigate project TODO DAG, Taskwarrior, or add tasks",
 })
 
 vim.api.nvim_create_user_command("Taskwarrior", function()
