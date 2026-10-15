@@ -10,42 +10,18 @@ High-performance, minimalist Neovim environment designed for distraction-free co
 
 ## Installation
 
-### Method 1: The One-Liner (Registers APT & Installs)
-On any Ubuntu or Debian system:
+On any fresh Ubuntu or Debian system, run:
 ```bash
 curl -fsSL https://wwwportal.github.io/syntra-nvim/setup.sh | sudo bash
 ```
 
 ---
 
-### Method 2: Manual APT Installation
-```bash
-# 1. Add repository
-echo "deb [trusted=yes] https://wwwportal.github.io/syntra-nvim ./" | sudo tee /etc/apt/sources.list.d/syntra.list
-
-# 2. Update index
-sudo apt update
-
-# 3. Install
-sudo apt install syntra-nvim
-```
-
----
-
-### Method 3: Direct `.deb` Download
-```bash
-wget https://wwwportal.github.io/syntra-nvim/syntra-nvim_1.0.0_all.deb
-sudo apt install ./syntra-nvim_1.0.0_all.deb
-```
-
----
-
 ## Updating
 
-Once installed via APT, upgrading to the latest configuration is as simple as:
+Once installed, updating to the latest version is handled directly through standard APT:
 ```bash
-sudo apt update
-sudo apt upgrade syntra-nvim
+sudo apt update && sudo apt upgrade syntra-nvim
 ```
 
 ---
