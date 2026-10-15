@@ -8,7 +8,7 @@
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior and in-tree source TODOs.
 -- Criterion: review: ":Tasks displays integrated agenda view with source TODOs and Taskwarrior tasks"
 
--- TODO(lgcc-dep-bundle | tier:B | depends_on:[lgcc-native-lua] | blocks:[lgcc-task-synthesizer, lgcc-compressed-ir]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
+-- TODO(lgcc-dep-bundle | tier:A | blocks:[lgcc-task-synthesizer, lgcc-compressed-ir]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
 -- Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
 -- Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
 

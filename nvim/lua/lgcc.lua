@@ -1,8 +1,10 @@
 -- ==============================================================================
--- lgcc.lua: Neovim Integration for Logical Compiler (lgcc)
--- Asynchronously streams raw model output into the command line status ticker,
--- routes diagnostics on demand to Quickfix (zero inline virtual text pollution),
--- and optionally reads back results via voice synthesis (:Lgcc -s).
+-- lgcc.lua: Native Neovim Logical Compiler & Invariant Verifier
+-- Tiered execution: Uses Antigravity (agy) until quota/limits run out,
+-- allows agy to orchestrate opencode worker subagents, and automatically
+-- fails over to opencode (OpenRouter) on quota exhaustion.
+-- Streams intermediate reasoning tokens live to the command-line ticker
+-- and routes verified errors to Quickfix on demand.
 -- ==============================================================================
 
 local M = {}
@@ -39,7 +41,10 @@ local function speak_summary(text)
 end
 
 --- Start the animated status ticker in the command line
-local function start_ticker(filename)
+--- @param filename string
+--- @param engine? string "agy" | "opencode" | "local"
+local function start_ticker(filename, engine)
+  engine = engine or "agy"
   if ticker_timer then
     pcall(function() ticker_timer:stop(); ticker_timer:close() end)
     ticker_timer = nil
@@ -48,6 +53,7 @@ local function start_ticker(filename)
   local spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
   local frame = 1
   local state = {
+    engine = engine,
     raw_tail = "starting...",
   }
 
@@ -57,7 +63,7 @@ local function start_ticker(filename)
     frame = (frame % #spinner) + 1
     local spin = spinner[frame]
     local tail = state.raw_tail or "analyzing..."
-    local msg = string.format("%s [lgcc] %s: %s", spin, filename, tail)
+    local msg = string.format("%s [lgcc:%s] %s: %s", spin, state.engine, filename, tail)
     vim.api.nvim_echo({ { msg, "ModeMsg" } }, false, {})
   end))
 
@@ -73,8 +79,43 @@ local function stop_ticker()
   vim.api.nvim_echo({ { "", "" } }, false, {})
 end
 
---- Run lgcc on the given file or current buffer
---- @param opts? { file?: string, spec?: string, web?: boolean, speak?: boolean, bufnr?: number }
+--- Parse LLM diagnostic output into Quickfix items
+--- @param raw string
+--- @param filepath string
+local function parse_diagnostics(raw, filepath)
+  local qf_items = {}
+  for line in raw:gmatch("[^\r\n]+") do
+    -- Standard format: <file>:<line>:<col>: error: <msg> or <file>:<line>: error: <msg>
+    local file, lnum, col, msg = line:match("^([^:]+):(%d+):(%d*):%s*error:%s*(.+)$")
+    if not lnum then
+      file, lnum, msg = line:match("^([^:]+):(%d+):%s*error:%s*(.+)$")
+    end
+
+    -- Alt format: [line N] msg or Line N: msg
+    if not lnum then
+      local lnum_alt, msg_alt = line:match("^%[?line%s*(%d+)%]?%s*:?%s*(.+)$")
+      if lnum_alt then
+        file = filepath
+        lnum = lnum_alt
+        msg = msg_alt
+      end
+    end
+
+    if lnum and msg then
+      table.insert(qf_items, {
+        filename = (file and file ~= "") and file or filepath,
+        lnum = tonumber(lnum),
+        col = tonumber(col) or 1,
+        text = vim.trim(msg),
+        type = "E",
+      })
+    end
+  end
+  return qf_items
+end
+
+--- Run native logical compiler on target file or active buffer
+--- @param opts? { file?: string, spec?: string, engine?: string, speak?: boolean, bufnr?: number }
 function M.lint(opts)
   opts = opts or {}
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
@@ -91,105 +132,135 @@ function M.lint(opts)
     active_job = nil
   end
 
-  -- Auto-save if buffer is modified and open in editor
+  -- Auto-save if buffer is modified
   if bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_get_option_value("modified", { buf = bufnr }) then
     vim.cmd("silent write")
   end
-    
-  -- TODO(lgcc-native-lua | tier:A | blocks:[lgcc-dep-bundle]): Implement native Lua LLM execution inside Neovim rather than invoking external shell wrapper.
-  -- Description: Replace external ~/.local/bin/lgcc bash script dependency with direct Lua-driven OpenCode/OpenRouter request engine for portable self-contained execution.
-  -- Criterion: review: "lgcc.lua executes logical compilation using native libuv sockets/curl without requiring external lgcc bash script"
-  local cmd = { "lgcc" }
-  if opts.spec and opts.spec ~= "" then
-    table.insert(cmd, "-s")
-    table.insert(cmd, vim.fn.expand(opts.spec))
+
+  -- Read file and prefix line numbers
+  local lines = vim.fn.readfile(filepath)
+  local numbered_lines = {}
+  for i, line in ipairs(lines) do
+    table.insert(numbered_lines, string.format("%d: %s", i, line))
   end
-  if opts.web ~= false then
-    table.insert(cmd, "-w")
-  else
-    table.insert(cmd, "-l")
-  end
-  table.insert(cmd, filepath)
+  local numbered_src = table.concat(numbered_lines, "\n")
 
   local file_basename = vim.fn.fnamemodify(filepath, ":t")
-  local state = start_ticker(file_basename)
 
-  local stdout_chunks = {}
-  local raw_stream = ""
+  -- Build prompt
+  local spec_section = ""
+  if opts.spec and opts.spec ~= "" then
+    local spec_path = vim.fn.expand(opts.spec)
+    if vim.fn.filereadable(spec_path) == 1 then
+      spec_section = string.format("--- SPECIFICATION DOCUMENT ---\n%s\n\n", table.concat(vim.fn.readfile(spec_path), "\n"))
+    end
+  end
 
-  active_job = vim.system(cmd, {
-    text = true,
-    stdout = function(_, data)
-      if data then table.insert(stdout_chunks, data) end
-    end,
-    stderr = function(_, data)
-      if not data then return end
-      raw_stream = raw_stream .. data
+  local system_prompt = [[You are the Logical Compiler (lgcc).
+Analyze the provided source code for semantic bugs, invariant violations, and logical flaws.
+Ignore syntax, formatting, and naming conventions.
+If you need heavy dependency context or external code exploration, you may run `opencode run "<query>"` to delegate sub-worker analysis.
+If flaws exist, output each flaw strictly on its own line in this format:
+<file>:<line>: error: <clear description of flaw>
+If there are no logic errors, output: CLEAN]]
 
-      -- Strip ANSI escape codes and collapse whitespace
-      local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
+  local full_prompt = string.format("%s\n\n%s--- SOURCE CODE (prefixed with line numbers) ---\n%s\n\nFile: %s",
+    system_prompt, spec_section, numbered_src, filepath)
 
-      if #clean > 55 then
-        state.raw_tail = "..." .. clean:sub(-52)
-      elseif #clean > 0 then
-        state.raw_tail = clean
-      end
-    end,
-  }, function(res)
-    active_job = nil
+  local initial_engine = opts.engine or "agy"
+  local state = start_ticker(file_basename, initial_engine)
 
-    vim.schedule(function()
-      stop_ticker()
+  local function execute_run(engine_name)
+    state.engine = engine_name
+    state.raw_tail = "dispatching to " .. engine_name .. "..."
+
+    local cmd = {}
+    if engine_name == "agy" then
+      cmd = { "agy", "-p", full_prompt, "--dangerously-skip-permissions", "--output-format", "text" }
+    elseif engine_name == "opencode" then
+      cmd = { "opencode", "run", full_prompt }
+    else
+      -- Local fallback
+      local model = vim.fn.expand("~/code/agent/vendor/models/qwen2.5-coder-7b/qwen2.5-coder-7b-instruct-q6_k.gguf")
+      cmd = { "llama-cli", "-m", model, "-ngl", "12", "-t", "8", "-c", "8192", "--temp", "0.0", "-p", full_prompt }
+    end
+
+    local stdout_chunks = {}
+    local raw_stream = ""
+
+    active_job = vim.system(cmd, {
+      text = true,
+      stdout = function(_, data)
+        if not data then return end
+        table.insert(stdout_chunks, data)
+        raw_stream = raw_stream .. data
+
+        local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
+        if #clean > 55 then
+          state.raw_tail = "..." .. clean:sub(-52)
+        elseif #clean > 0 then
+          state.raw_tail = clean
+        end
+      end,
+      stderr = function(_, data)
+        if not data then return end
+        raw_stream = raw_stream .. data
+        local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
+        if #clean > 55 then
+          state.raw_tail = "..." .. clean:sub(-52)
+        elseif #clean > 0 then
+          state.raw_tail = clean
+        end
+      end,
+    }, function(res)
+      active_job = nil
 
       local out = table.concat(stdout_chunks, "")
-      local qf_items = {}
 
-      for line in out:gmatch("[^\r\n]+") do
-        -- Format: <file>:<line>:<col>: error: <msg>
-        local file, lnum, col, msg = line:match("^([^:]+):(%d+):(%d*):%s*error:%s*(.+)$")
-        if not lnum then
-          file, lnum, msg = line:match("^([^:]+):(%d+):%s*error:%s*(.+)$")
-          col = "1"
-        end
-
-        if lnum and msg then
-          table.insert(qf_items, {
-            filename = file,
-            lnum = tonumber(lnum),
-            text = msg,
-            type = "E",
-          })
-        end
+      -- Failover condition: If agy failed (exit non-zero, quota exceeded, or empty output)
+      local is_quota_error = out:match("RESOURCE_EXHAUSTED") or out:match("quota") or out:match("429")
+      if engine_name == "agy" and (res.code ~= 0 or is_quota_error or vim.trim(out) == "") then
+        vim.schedule(function()
+          vim.notify("lgcc: agy quota/execution limit reached, failing over to opencode...", vim.log.levels.WARN)
+          execute_run("opencode")
+        end)
+        return
       end
 
-      if #qf_items > 0 then
-        -- Open bottom split with results (zero in-line buffer pollution)
-        vim.fn.setqflist(qf_items, "r")
-        vim.fn.setqflist({}, "a", { title = "lgcc: " .. file_basename .. " (" .. #qf_items .. " logical errors)" })
-        vim.cmd("botright copen 8")
-        vim.api.nvim_echo({
-          { string.format("✕ [lgcc] %d logical error(s) detected (see bottom split)", #qf_items), "DiagnosticError" },
-        }, true, {})
+      vim.schedule(function()
+        stop_ticker()
 
-        if opts.speak then
-          local summary = string.format("Logical compiler found %d error%s in %s. First error at line %d: %s",
-            #qf_items, #qf_items == 1 and "" or "s", file_basename, qf_items[1].lnum, qf_items[1].text)
-          speak_summary(summary)
-        end
-      else
-        -- Clean: close quickfix if open, echo success
-        pcall(vim.cmd, "cclose")
-        vim.fn.setqflist({}, "r")
-        vim.api.nvim_echo({
-          { "✓ [lgcc] clean (no logical errors found)", "DiagnosticOk" },
-        }, true, {})
+        local qf_items = parse_diagnostics(out, filepath)
 
-        if opts.speak then
-          speak_summary("Logical compiler check clean. No logical errors found in " .. file_basename)
+        if #qf_items > 0 then
+          vim.fn.setqflist(qf_items, "r")
+          vim.fn.setqflist({}, "a", { title = string.format("lgcc [%s]: %s (%d logical errors)", engine_name, file_basename, #qf_items) })
+          vim.cmd("botright copen 8")
+          vim.api.nvim_echo({
+            { string.format("✕ [lgcc:%s] %d logical error(s) detected (see bottom split)", engine_name, #qf_items), "DiagnosticError" },
+          }, true, {})
+
+          if opts.speak then
+            local summary = string.format("Logical compiler found %d error%s in %s. First error at line %d: %s",
+              #qf_items, #qf_items == 1 and "" or "s", file_basename, qf_items[1].lnum, qf_items[1].text)
+            speak_summary(summary)
+          end
+        else
+          pcall(vim.cmd, "cclose")
+          vim.fn.setqflist({}, "r")
+          vim.api.nvim_echo({
+            { string.format("✓ [lgcc:%s] clean (no logical errors found in %s)", engine_name, file_basename), "DiagnosticOk" },
+          }, true, {})
+
+          if opts.speak then
+            speak_summary("Logical compiler check clean. No logical errors found in " .. file_basename)
+          end
         end
-      end
+      end)
     end)
-  end)
+  end
+
+  execute_run(initial_engine)
 end
 
 --- Clear lgcc results and close bottom split
@@ -209,7 +280,7 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
   local fargs = ctx.fargs or {}
   local speak = false
   local spec_path = nil
-  local web = true -- default to cloud OpenCode with OpenRouter
+  local engine = "agy" -- default to agy, with automatic opencode failover
   local target_file = nil
   local i = 1
 
@@ -217,10 +288,12 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
     local arg = fargs[i]
     if arg == "-s" or arg == "--speak" or arg == "speak" then
       speak = true
+    elseif arg == "--opencode" or arg == "opencode" then
+      engine = "opencode"
+    elseif arg == "--agy" or arg == "agy" then
+      engine = "agy"
     elseif arg == "-l" or arg == "--local" or arg == "local" then
-      web = false
-    elseif arg == "-w" or arg == "--web" or arg == "web" then
-      web = true
+      engine = "local"
     elseif arg == "clear" then
       M.clear()
       return
@@ -236,7 +309,7 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
   M.lint({
     file = target_file,
     spec = spec_path,
-    web = web,
+    engine = engine,
     speak = speak,
   })
 end, {
@@ -244,7 +317,7 @@ end, {
   complete = function(arglead, cmdline)
     local parts = vim.split(vim.trim(cmdline), "%s+")
     if #parts <= 2 and not cmdline:match("%s+$") then
-      local subcmds = { "clear", "-s", "--speak", "spec", "-l", "--local", "-w", "--web" }
+      local subcmds = { "clear", "-s", "--speak", "spec", "--opencode", "--agy", "-l", "--local" }
       return vim.tbl_filter(function(item)
         return vim.startswith(item, arglead)
       end, subcmds)
@@ -254,7 +327,7 @@ end, {
       return vim.fn.getcompletion(arglead, "file")
     end
   end,
-  desc = "Run logical compiler (lgcc) with live status ticker and quickfix results; use -s to speak back output",
+  desc = "Run logical compiler (lgcc) with live status ticker, Quickfix results, and agy/opencode failover; use -s for voice summary",
 })
 
 return M

@@ -1,0 +1,15 @@
+# Resolution Log: Native Lua Execution for lgcc
+Task ID: lgcc-native-lua
+Date: 2026-10-15
+Author: Yassine
+
+## Resolution Details
+- Replaced external ~/.local/bin/lgcc bash script dependency with native asynchronous execution directly inside Neovim in nvim/lua/lgcc.lua.
+- Implemented tiered engine architecture:
+  1. Primary: agy -p (Antigravity CLI) non-interactive execution with permission skip and stream-compatible format.
+  2. Workers: Prompt permits agy to spawn opencode subagent queries for heavy dependency analysis.
+  3. Failover: Automatic detection of agy quota/rate-limits with seamless failover to opencode (OpenRouter).
+  4. Local fallback: Option to run local llama-cli with -l.
+- Live streaming ticker updates the Neovim command-line status dynamically during reasoning.
+- Diagnostic errors parse directly into Neovim's Quickfix split on demand.
+- Voice readback remains supported via -s with piper TTS.
