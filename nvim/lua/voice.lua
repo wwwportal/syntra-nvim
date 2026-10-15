@@ -1,60 +1,71 @@
 local M = {}
 
 local py = vim.fn.expand("~/myenv/bin/python")
-local audio_path = "/tmp/syntra_voice.wav"
-
-local function transcribe_audio()
-    local script = string.format([[
-import sys, os
-sys.path.insert(0, "/home/yassine/myenv/lib/python3.12/site-packages")
-from faster_whisper import WhisperModel
-model = WhisperModel("base.en", device="cpu", compute_type="int8")
-segments, info = model.transcribe("%s", language="en", beam_size=1, vad_filter=True)
-text = "".join(s.text for s in segments).strip()
-print(text)
-]], audio_path)
-    local out = vim.fn.system({ py, "-c", script })
-    if vim.v.shell_error ~= 0 then
-        return nil, out
-    end
-    return out:gsub("\n", ""):gsub("\r", "")
-end
-
 local stream_file = "/tmp/syntra_voice_stream.out"
 local stream_pid = nil
 local timer = nil
 local last_line = 0
 
-function M.start_transcription()
-    -- Toggle continuous mode on/off via :v
-    if stream_pid and vim.fn.jobwait({stream_pid}, 0)[1] == 0 then
-        vim.fn.jobstop(stream_pid)
-        stream_pid = nil
-        if timer then timer:stop(); timer = nil end
-        vim.notify(":listen continuous mode stopped", vim.log.levels.INFO)
-        return
+--- Check if voice stream process is actively running
+function M.is_active()
+    if stream_pid and vim.fn.jobwait({ stream_pid }, 0)[1] == -1 then
+        return true
+    end
+    -- Check system process in case process was started outside or before reload
+    local check = vim.fn.system("pgrep -f syntra_voice_stream.py 2>/dev/null")
+    return vim.v.shell_error == 0 and check:match("%d+") ~= nil
+end
+
+--- Stop active transcription stream and polling timer
+function M.stop()
+    if timer then
+        pcall(function() timer:stop(); timer:close() end)
+        timer = nil
     end
 
-    -- Kill any existing stream process
-    vim.fn.system("pkill -f syntra_voice_stream.py 2>/dev/null || true")
-    vim.fn.system("> /tmp/syntra_voice_stream.out")
+    if stream_pid then
+        pcall(vim.fn.jobstop, stream_pid)
+        stream_pid = nil
+    end
+
+    -- Kill any lingering python stream processes
+    vim.fn.system("pkill -9 -f syntra_voice_stream.py 2>/dev/null || true")
+
+    vim.notify("✓ :Listen voice transcription stopped", vim.log.levels.INFO)
+end
+
+--- Start continuous transcription stream into active buffer
+function M.start()
+    if M.is_active() then
+        M.stop()
+    end
+
+    -- Clear stream output file
+    vim.fn.system("> " .. stream_file)
     last_line = 0
-    stream_pid = vim.fn.jobstart({ vim.fn.expand("~/myenv/bin/python"), "/tmp/syntra_voice_stream.py" })
+
+    stream_pid = vim.fn.jobstart({ py, "/tmp/syntra_voice_stream.py" })
     if stream_pid <= 0 then
         vim.notify("Failed to start voice stream", vim.log.levels.ERROR)
         stream_pid = nil
         return
     end
-    vim.notify(":listen continuous listening started (run :listen again to stop)", vim.log.levels.INFO)
-    timer = vim.loop.new_timer()
+
+    vim.notify("● :Listen voice transcription active (run :Listen or :Listen stop to disable)", vim.log.levels.INFO)
+
+    timer = vim.uv.new_timer()
     timer:start(500, 500, vim.schedule_wrap(function()
         if not vim.api.nvim_buf_is_valid(0) then return end
+        if vim.fn.filereadable(stream_file) ~= 1 then return end
+
         local lines = vim.fn.readfile(stream_file)
         if #lines <= last_line then return end
+
         local cur_buf = vim.api.nvim_get_current_buf()
         local cur_win = vim.api.nvim_get_current_win()
         local row, col = unpack(vim.api.nvim_win_get_cursor(cur_win))
         local inserted = false
+
         for i = last_line + 1, #lines do
             local text = lines[i]:gsub("\r", ""):gsub("\n", "")
             if text ~= "" then
@@ -70,6 +81,7 @@ function M.start_transcription()
                 inserted = true
             end
         end
+
         if inserted then
             vim.api.nvim_win_set_cursor(cur_win, { row, col })
         end
@@ -77,14 +89,40 @@ function M.start_transcription()
     end))
 end
 
+--- Toggle transcription state
+function M.toggle()
+    if M.is_active() then
+        M.stop()
+    else
+        M.start()
+    end
+end
+
 function M.setup()
-    vim.api.nvim_create_user_command("Listen", function()
-        M.start_transcription()
-    end, { desc = "Voice transcription (:listen)" })
+    vim.api.nvim_create_user_command("Listen", function(ctx)
+        local arg = vim.trim(ctx.args or ""):lower()
+        if arg == "stop" or arg == "off" then
+            M.stop()
+        elseif arg == "start" or arg == "on" then
+            M.start()
+        elseif arg == "status" then
+            local active = M.is_active()
+            vim.notify("Voice transcription is currently " .. (active and "ACTIVE (listening)" or "INACTIVE"), vim.log.levels.INFO)
+        else
+            M.toggle()
+        end
+    end, {
+        nargs = "?",
+        complete = function(arglead)
+            local subcmds = { "start", "stop", "toggle", "status" }
+            return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
+        end,
+        desc = "Toggle or manage voice transcription (:Listen [start|stop|status])",
+    })
 
     vim.keymap.set("n", "<leader>v", function()
-        M.start_transcription()
-    end, { desc = "Voice transcription" })
+        M.toggle()
+    end, { desc = "Toggle voice transcription" })
 end
 
 return M
