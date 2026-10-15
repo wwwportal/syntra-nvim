@@ -634,8 +634,8 @@ vim.opt.rtp:append("/home/yassine/code/syntra-nvim/nvim")
 -- ── Voice Transcription (:Listen) ──
 require("voice").setup()
 
--- ── Lgcc Voice Output (:Lgcc -s) ──
-require("voice_output").setup()
+-- ── Logical Compiler (:Lgcc [-s]) ──
+require("lgcc")
 
 
 -- ── Plugin manager (lazy.nvim) ──
