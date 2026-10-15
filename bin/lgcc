@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# lgcc: Logical Compiler & Diagnostic Engine
+# Uses local LLM (llama-cli) or OpenCode to detect semantic and logical flaws.
+# Emits standard compiler diagnostic format:
+#   <file>:<line>:<col>: error: <message>
+#
+# Exit codes:
+#   0 - Clean (no logical errors found)
+#   1 - Logical errors detected
+#   2 - Invocation or execution error
+# ==============================================================================
+
+set -eo pipefail
+
+DEFAULT_MODEL="$HOME/code/agent/vendor/models/qwen2.5-coder-7b/qwen2.5-coder-7b-instruct-q6_k.gguf"
+MODEL_PATH="$DEFAULT_MODEL"
+WEB_FLAG=false
+SPEC_FILE=""
+FILE_ARG=""
+VERBOSE=false
+
+show_help() {
+    cat <<EOF
+Usage: lgcc [OPTIONS] <source_file>
+
+Options:
+  -s, --spec <file>    Specification or reference file to verify against
+  -w, --web            Use OpenCode with web search instead of local llama-cli
+  -m, --model <path>   Override path to GGUF model
+  -v, --verbose        Print raw model output to stderr
+  -h, --help           Show this help message
+
+Output Format:
+  <source_file>:<line>:1: error: <message>
+EOF
+}
+
+# Parse CLI options
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -w|--web)
+            WEB_FLAG=true
+            shift
+            ;;
+        -s|--spec)
+            SPEC_FILE="$2"
+            shift 2
+            ;;
+        -m|--model)
+            MODEL_PATH="$2"
+            shift 2
+            ;;
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        -*)
+            echo "lgcc: unknown option: $1" >&2
+            show_help >&2
+            exit 2
+            ;;
+        *)
+            if [[ -z "$FILE_ARG" ]]; then
+                FILE_ARG="$1"
+            else
+                echo "lgcc: unexpected argument: $1" >&2
+                exit 2
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$FILE_ARG" ]]; then
+    echo "lgcc: missing source file" >&2
+    show_help >&2
+    exit 2
+fi
+
+if [[ ! -f "$FILE_ARG" ]]; then
+    echo "lgcc: file not found: $FILE_ARG" >&2
+    exit 2
+fi
+
+# Resolve absolute path for standardized diagnostic output
+RESOLVED_FILE="$(readlink -f "$FILE_ARG")"
+
+# Build prompt
+SYSTEM_PROMPT='You are a strict, formal logical error detector and compiler linter (lgcc).
+Analyze the provided source file for logic bugs, invariant violations, unhandled bounds/errors, and semantic discrepancies.
+Ignore syntax, formatting, naming conventions, and cosmetic issues.
+DO NOT rewrite the code. DO NOT wrap output in markdown code fences. DO NOT include conversational text.
+If logic errors exist, output EXACTLY one line per error in this format:
+[line <line_number>] <concise description of logic flaw>
+If no logic errors exist, output exactly:
+CLEAN'
+
+PROMPT_BODY=""
+if [[ -n "$SPEC_FILE" ]]; then
+    if [[ ! -f "$SPEC_FILE" ]]; then
+        echo "lgcc: specification file not found: $SPEC_FILE" >&2
+        exit 2
+    fi
+    PROMPT_BODY="--- SPECIFICATION DOCUMENT ---
+$(cat "$SPEC_FILE")
+
+--- SOURCE FILE UNDER TEST: $(basename "$RESOLVED_FILE") ---
+$(cat "$RESOLVED_FILE")"
+else
+    PROMPT_BODY="--- SOURCE FILE UNDER TEST: $(basename "$RESOLVED_FILE") ---
+$(cat "$RESOLVED_FILE")"
+fi
+
+RAW_OUTPUT=""
+
+if [[ "$WEB_FLAG" == true ]]; then
+    FULL_PROMPT="$SYSTEM_PROMPT
+
+$PROMPT_BODY
+
+Search the web if necessary to verify API behaviors and semantics."
+    RAW_OUTPUT="$(opencode run "$FULL_PROMPT" 2>&1)" || true
+else
+    if [[ ! -f "$MODEL_PATH" ]]; then
+        echo "lgcc: model not found at $MODEL_PATH" >&2
+        exit 2
+    fi
+    
+    # Run local llama-cli with greedy sampling (temp 0) for determinism
+    RAW_OUTPUT="$(llama-cli \
+        -m "$MODEL_PATH" \
+        -ngl 12 -t 8 -c 8192 \
+        --temp 0.0 \
+        --single-turn \
+        --simple-io \
+        --no-display-prompt \
+        -sys "$SYSTEM_PROMPT" \
+        -p "$PROMPT_BODY" 2>/dev/null)" || true
+fi
+
+if [[ "$VERBOSE" == true ]]; then
+    echo "--- [lgcc raw output start] ---" >&2
+    echo "$RAW_OUTPUT" >&2
+    echo "--- [lgcc raw output end] ---" >&2
+fi
+
+# Normalize raw LLM output into standard compiler diagnostic format:
+# <file>:<line>:<col>: error: <msg>
+RAW_OUTPUT="$RAW_OUTPUT" python3 - "$RESOLVED_FILE" << 'EOF'
+import os
+import sys
+import re
+
+filepath = sys.argv[1]
+raw = os.environ.get("RAW_OUTPUT", "")
+
+# Line pattern: [line N] message OR Line N: message OR [Line N] message
+pattern = re.compile(r'(?:\[line\s*(\d+)\]|line\s*(\d+):)\s*(.+)', re.IGNORECASE)
+
+errors_found = 0
+
+for line in raw.splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    if "CLEAN" in line.upper() and len(line) <= 10:
+        continue
+    
+    match = pattern.search(line)
+    if match:
+        line_num = match.group(1) or match.group(2)
+        msg = match.group(3).strip()
+        # Clean up any trailing brackets or backticks
+        msg = re.sub(r'[`*]', '', msg)
+        print(f"{filepath}:{line_num}:1: error: {msg}")
+        errors_found += 1
+    elif line.startswith("[") and "]" in line:
+        # Fallback for bracketed formats without explicit 'line' keyword, e.g. [14] error
+        submatch = re.match(r'\[(\d+)\]\s*(.+)', line)
+        if submatch:
+            line_num = submatch.group(1)
+            msg = re.sub(r'[`*]', '', submatch.group(2).strip())
+            print(f"{filepath}:{line_num}:1: error: {msg}")
+            errors_found += 1
+
+if errors_found > 0:
+    sys.exit(1)
+else:
+    sys.exit(0)
+EOF

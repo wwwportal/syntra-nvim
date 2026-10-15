@@ -1,0 +1,16 @@
+Package: syntra-nvim
+Version: 1.0.0
+Architecture: all
+Maintainer: Syntra <support@syntra.io>
+Depends: git, curl, ripgrep, python3, tar, gzip, ca-certificates
+Filename: ./syntra-nvim_1.0.0_all.deb
+Size: 13176
+MD5sum: 0409c5e9c9b612a1f7fea762340af0e5
+SHA1: 7235b69292e686fde9e455da6cd81750c587e8cb
+SHA256: 631a228bf29c78c700eb5e5055b057221aad5ef6c176275139e5cc8858d90a7e
+Section: editors
+Priority: optional
+Description: High-performance Neovim setup with monochrome theme and lgcc logical compiler
+ Provisions modern Neovim (v0.10+), Lean 4 hooks, custom monochrome
+ window management, and native lgcc logical diagnostic integration.
+

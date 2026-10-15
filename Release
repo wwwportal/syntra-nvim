@@ -1,0 +1,14 @@
+Origin: Syntra
+Label: Syntra Neovim Repository
+Suite: stable
+Codename: stable
+Architectures: all amd64 arm64
+Components: main
+Description: Syntra Neovim APT Repository
+Date: Thu, 15 Oct 2026 16:44:08 +0000
+MD5Sum:
+ 0e12fc2eb69a4ee240ee2723c07e27d6 633 Packages
+ 1f134078a8e10894d52498737f8aef17 468 Packages.gz
+SHA256:
+ 9bfc575aa8520f197c33ce66c79d2cc0ee9fed1f68899d92503f7dbdd4a0e5fa 633 Packages
+ 613cc30401e5658d2f6b9574ebdbc7c7e42a71063d1094173e18a7eea47cdb21 468 Packages.gz
