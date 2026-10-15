@@ -16,6 +16,14 @@
 -- Description: Connect whisper transcription output to speech-to-speech assistant mode in Neovim terminal split.
 -- Criterion: assert: transcription latency under 800ms and audio plays back without blocking editor
 
+-- TODO(lgcc-dep-bundle | tier:B | depends_on:[lgcc-native-lua] | blocks:[lgcc-task-synthesizer]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
+-- Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
+-- Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
+
+-- TODO(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
+-- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
+-- Criterion: review: ":Tasks fix or lgcc --fix-tasks interactively converts unstructured TODOs into valid in-tree contracts with user confirmation"
+
 -- TODO(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks-calendar]): Package and version syntra-nvim Debian release with verified task DAG.
 -- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.
 -- Criterion: review: "dpkg-deb -I syntra-nvim_1.0.0_all.deb succeeds and apt repository index matches"
