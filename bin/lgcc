@@ -94,10 +94,8 @@ RESOLVED_FILE="$(readlink -f "$FILE_ARG")"
 SYSTEM_PROMPT='You are a strict, formal logical error detector and compiler linter (lgcc).
 Analyze the provided source file for logic bugs, invariant violations, unhandled bounds/errors, and semantic discrepancies.
 Ignore syntax, formatting, naming conventions, and cosmetic issues.
-DO NOT rewrite the code. DO NOT wrap output in markdown code fences.
-
-First, concisely verify the logic, invariants, and edge cases step-by-step inside a <thinking>...</thinking> block.
-Then, if logic errors exist, output EXACTLY one line per error in this format:
+Point out any flaws with their line numbers.
+If logic errors exist, output one line per error in this format:
 [line <line_number>] <concise description of logic flaw>
 If no logic errors exist, output:
 CLEAN'
@@ -127,7 +125,7 @@ if [[ "$WEB_FLAG" == true ]]; then
 $PROMPT_BODY
 
 Search the web if necessary to verify API behaviors and semantics."
-    stdbuf -oL -eL opencode run "$FULL_PROMPT" 2>&1 | tee "$TMP_OUTPUT" >&2 || true
+    opencode run "$FULL_PROMPT" 2>&1 | tee "$TMP_OUTPUT" >&2 || true
 else
     if [[ ! -f "$MODEL_PATH" ]]; then
         echo "lgcc: model not found at $MODEL_PATH" >&2
@@ -161,15 +159,14 @@ try:
 except Exception:
     sys.exit(0)
 
-# Strip out thinking tags to avoid false positives inside thinking block
-cleaned = re.sub(r'<thinking>.*?</thinking>', '', raw, flags=re.DOTALL)
-
+# Line pattern: [line N] message OR Line N: message OR [Line N] message
 pattern = re.compile(r'(?:\[line\s*(\d+)\]|line\s*(\d+):)\s*(.+)', re.IGNORECASE)
+
 errors_found = 0
 
-for line in cleaned.splitlines():
+for line in raw.splitlines():
     line = line.strip()
-    if not line or line.startswith("<thinking>") or line.startswith("</thinking>"):
+    if not line:
         continue
     if "CLEAN" in line.upper() and len(line) <= 10:
         continue
@@ -178,10 +175,12 @@ for line in cleaned.splitlines():
     if match:
         line_num = match.group(1) or match.group(2)
         msg = match.group(3).strip()
+        # Clean up any trailing brackets or backticks
         msg = re.sub(r'[`*]', '', msg)
         print(f"{filepath}:{line_num}:1: error: {msg}")
         errors_found += 1
     elif line.startswith("[") and "]" in line:
+        # Fallback for bracketed formats without explicit 'line' keyword, e.g. [14] error
         submatch = re.match(r'\[(\d+)\]\s*(.+)', line)
         if submatch:
             line_num = submatch.group(1)

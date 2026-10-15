@@ -1,7 +1,7 @@
 -- ==============================================================================
 -- lgcc.lua: Neovim Integration for Logical Compiler (lgcc)
--- Asynchronously runs lgcc with live status ticker and bottom-split error list.
--- No intrusive pop-ups, no in-line virtual text distractions.
+-- Asynchronously streams raw model output into the command line status ticker
+-- and displays final results in a non-intrusive bottom split.
 -- ==============================================================================
 
 local M = {}
@@ -28,8 +28,7 @@ local function start_ticker(filename)
   local spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
   local frame = 1
   local state = {
-    token_count = 0,
-    snippet = "analyzing logic...",
+    raw_tail = "starting...",
   }
 
   ticker_timer = vim.uv.new_timer()
@@ -37,10 +36,8 @@ local function start_ticker(filename)
     if not ticker_timer then return end
     frame = (frame % #spinner) + 1
     local spin = spinner[frame]
-    local msg = string.format("%s [lgcc] %s %s", spin, filename, state.snippet)
-    if state.token_count > 0 then
-      msg = msg .. string.format(" (%d tokens)", state.token_count)
-    end
+    local tail = state.raw_tail or "analyzing..."
+    local msg = string.format("%s [lgcc] %s: %s", spin, filename, tail)
     vim.api.nvim_echo({ { msg, "ModeMsg" } }, false, {})
   end))
 
@@ -93,6 +90,7 @@ function M.lint(opts)
   local state = start_ticker(file_basename)
 
   local stdout_chunks = {}
+  local raw_stream = ""
 
   active_job = vim.system(cmd, {
     text = true,
@@ -101,17 +99,16 @@ function M.lint(opts)
     end,
     stderr = function(_, data)
       if not data then return end
-      -- Update live status ticker state from streamed tokens/reasoning
-      local words = vim.split(data, "%s+", { trimempty = true })
-      state.token_count = state.token_count + #words
+      raw_stream = raw_stream .. data
 
-      -- Clean up snippet for statusline display
-      local clean = data:gsub("<thinking>", ""):gsub("</thinking>", ""):gsub("[\r\n]+", " "):gsub("^%s+", "")
-      if clean ~= "" then
-        if #clean > 45 then
-          clean = "..." .. clean:sub(-42)
-        end
-        state.snippet = clean
+      -- Strip ANSI escape codes and collapse whitespace
+      local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
+
+      -- Cut off after 55 characters to keep status line compact and readable
+      if #clean > 55 then
+        state.raw_tail = "..." .. clean:sub(-52)
+      elseif #clean > 0 then
+        state.raw_tail = clean
       end
     end,
   }, function(res)
@@ -147,7 +144,7 @@ function M.lint(opts)
       end
 
       if #qf_items > 0 then
-        -- Open bottom split with errors (zero in-line buffer pollution)
+        -- Open bottom split with results (zero in-line buffer pollution)
         vim.fn.setqflist(qf_items, "r")
         vim.fn.setqflist({}, "a", { title = "lgcc: " .. file_basename .. " (" .. #qf_items .. " logical errors)" })
         vim.cmd("botright copen 8")
@@ -213,7 +210,7 @@ end, {
     end
     return {}
   end,
-  desc = "Run logical compiler (lgcc) on current buffer with status ticker and bottom split",
+  desc = "Run logical compiler (lgcc) on current buffer with live ticker and bottom split results",
 })
 
 return M
