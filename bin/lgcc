@@ -94,10 +94,12 @@ RESOLVED_FILE="$(readlink -f "$FILE_ARG")"
 SYSTEM_PROMPT='You are a strict, formal logical error detector and compiler linter (lgcc).
 Analyze the provided source file for logic bugs, invariant violations, unhandled bounds/errors, and semantic discrepancies.
 Ignore syntax, formatting, naming conventions, and cosmetic issues.
-DO NOT rewrite the code. DO NOT wrap output in markdown code fences. DO NOT include conversational text.
-If logic errors exist, output EXACTLY one line per error in this format:
+DO NOT rewrite the code. DO NOT wrap output in markdown code fences.
+
+First, concisely verify the logic, invariants, and edge cases step-by-step inside a <thinking>...</thinking> block.
+Then, if logic errors exist, output EXACTLY one line per error in this format:
 [line <line_number>] <concise description of logic flaw>
-If no logic errors exist, output exactly:
+If no logic errors exist, output:
 CLEAN'
 
 PROMPT_BODY=""
@@ -116,7 +118,8 @@ else
 $(cat "$RESOLVED_FILE")"
 fi
 
-RAW_OUTPUT=""
+TMP_OUTPUT="$(mktemp)"
+trap 'rm -f "$TMP_OUTPUT"' EXIT
 
 if [[ "$WEB_FLAG" == true ]]; then
     FULL_PROMPT="$SYSTEM_PROMPT
@@ -124,15 +127,15 @@ if [[ "$WEB_FLAG" == true ]]; then
 $PROMPT_BODY
 
 Search the web if necessary to verify API behaviors and semantics."
-    RAW_OUTPUT="$(opencode run "$FULL_PROMPT" 2>&1)" || true
+    stdbuf -oL -eL opencode run "$FULL_PROMPT" 2>&1 | tee "$TMP_OUTPUT" >&2 || true
 else
     if [[ ! -f "$MODEL_PATH" ]]; then
         echo "lgcc: model not found at $MODEL_PATH" >&2
         exit 2
     fi
     
-    # Run local llama-cli with greedy sampling (temp 0) for determinism
-    RAW_OUTPUT="$(llama-cli \
+    # Run local llama-cli with unbuffered streaming to stderr and temp file
+    stdbuf -oL -eL llama-cli \
         -m "$MODEL_PATH" \
         -ngl 12 -t 8 -c 8192 \
         --temp 0.0 \
@@ -140,33 +143,33 @@ else
         --simple-io \
         --no-display-prompt \
         -sys "$SYSTEM_PROMPT" \
-        -p "$PROMPT_BODY" 2>/dev/null)" || true
+        -p "$PROMPT_BODY" 2>/dev/null | tee "$TMP_OUTPUT" >&2 || true
 fi
 
-if [[ "$VERBOSE" == true ]]; then
-    echo "--- [lgcc raw output start] ---" >&2
-    echo "$RAW_OUTPUT" >&2
-    echo "--- [lgcc raw output end] ---" >&2
-fi
-
-# Normalize raw LLM output into standard compiler diagnostic format:
+# Normalize raw LLM output from temp file into standard compiler diagnostic format:
 # <file>:<line>:<col>: error: <msg>
-RAW_OUTPUT="$RAW_OUTPUT" python3 - "$RESOLVED_FILE" << 'EOF'
-import os
+python3 - "$RESOLVED_FILE" "$TMP_OUTPUT" << 'EOF'
 import sys
 import re
 
 filepath = sys.argv[1]
-raw = os.environ.get("RAW_OUTPUT", "")
+tmp_file = sys.argv[2]
 
-# Line pattern: [line N] message OR Line N: message OR [Line N] message
+try:
+    with open(tmp_file, "r", encoding="utf-8", errors="replace") as f:
+        raw = f.read()
+except Exception:
+    sys.exit(0)
+
+# Strip out thinking tags to avoid false positives inside thinking block
+cleaned = re.sub(r'<thinking>.*?</thinking>', '', raw, flags=re.DOTALL)
+
 pattern = re.compile(r'(?:\[line\s*(\d+)\]|line\s*(\d+):)\s*(.+)', re.IGNORECASE)
-
 errors_found = 0
 
-for line in raw.splitlines():
+for line in cleaned.splitlines():
     line = line.strip()
-    if not line:
+    if not line or line.startswith("<thinking>") or line.startswith("</thinking>"):
         continue
     if "CLEAN" in line.upper() and len(line) <= 10:
         continue
@@ -175,12 +178,10 @@ for line in raw.splitlines():
     if match:
         line_num = match.group(1) or match.group(2)
         msg = match.group(3).strip()
-        # Clean up any trailing brackets or backticks
         msg = re.sub(r'[`*]', '', msg)
         print(f"{filepath}:{line_num}:1: error: {msg}")
         errors_found += 1
     elif line.startswith("[") and "]" in line:
-        # Fallback for bracketed formats without explicit 'line' keyword, e.g. [14] error
         submatch = re.match(r'\[(\d+)\]\s*(.+)', line)
         if submatch:
             line_num = submatch.group(1)

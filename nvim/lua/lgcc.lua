@@ -1,25 +1,60 @@
 -- ==============================================================================
 -- lgcc.lua: Neovim Integration for Logical Compiler (lgcc)
--- Asynchronously runs lgcc and populates native vim.diagnostic
+-- Asynchronously runs lgcc with live status ticker and bottom-split error list.
+-- No intrusive pop-ups, no in-line virtual text distractions.
 -- ==============================================================================
 
 local M = {}
 
-local lgcc_ns = vim.api.nvim_create_namespace("lgcc")
+local active_job = nil
+local ticker_timer = nil
 
--- Configure namespace-specific display (underlines + virtual text + signs)
--- even if global LSP diagnostics are disabled.
-vim.diagnostic.config({
-  signs = true,
-  underline = true,
-  virtual_text = {
-    prefix = "▲ ",
-    spacing = 2,
-  },
-  severity_sort = true,
-}, lgcc_ns)
+-- Close quickfix window easily with 'q' or '<Esc>'
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "qf",
+  callback = function(ev)
+    vim.keymap.set("n", "q", "<Cmd>close<CR>", { buffer = ev.buf, silent = true, nowait = true })
+    vim.keymap.set("n", "<Esc>", "<Cmd>close<CR>", { buffer = ev.buf, silent = true, nowait = true })
+  end,
+})
 
-local active_jobs = {}
+--- Start the animated status ticker in the command line
+local function start_ticker(filename)
+  if ticker_timer then
+    pcall(function() ticker_timer:stop(); ticker_timer:close() end)
+    ticker_timer = nil
+  end
+
+  local spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+  local frame = 1
+  local state = {
+    token_count = 0,
+    snippet = "analyzing logic...",
+  }
+
+  ticker_timer = vim.uv.new_timer()
+  ticker_timer:start(0, 100, vim.schedule_wrap(function()
+    if not ticker_timer then return end
+    frame = (frame % #spinner) + 1
+    local spin = spinner[frame]
+    local msg = string.format("%s [lgcc] %s %s", spin, filename, state.snippet)
+    if state.token_count > 0 then
+      msg = msg .. string.format(" (%d tokens)", state.token_count)
+    end
+    vim.api.nvim_echo({ { msg, "ModeMsg" } }, false, {})
+  end))
+
+  return state
+end
+
+--- Stop the animated status ticker
+local function stop_ticker()
+  if ticker_timer then
+    pcall(function() ticker_timer:stop(); ticker_timer:close() end)
+    ticker_timer = nil
+  end
+  vim.api.nvim_echo({ { "", "" } }, false, {})
+end
 
 --- Run lgcc on the given or current buffer
 --- @param opts? { spec?: string, web?: boolean, bufnr?: number }
@@ -33,10 +68,10 @@ function M.lint(opts)
     return
   end
 
-  -- Cancel existing job for this buffer if still running
-  if active_jobs[bufnr] then
-    pcall(function() active_jobs[bufnr]:kill(9) end)
-    active_jobs[bufnr] = nil
+  -- Cancel existing job if running
+  if active_job then
+    pcall(function() active_job:kill(9) end)
+    active_job = nil
   end
 
   -- Auto-save if buffer is modified
@@ -54,70 +89,93 @@ function M.lint(opts)
   end
   table.insert(cmd, filepath)
 
-  vim.notify("lgcc: compiling logic for " .. vim.fn.fnamemodify(filepath, ":t") .. "...", vim.log.levels.INFO)
+  local file_basename = vim.fn.fnamemodify(filepath, ":t")
+  local state = start_ticker(file_basename)
 
   local stdout_chunks = {}
-  local stderr_chunks = {}
 
-  local job = vim.system(cmd, {
+  active_job = vim.system(cmd, {
     text = true,
     stdout = function(_, data)
       if data then table.insert(stdout_chunks, data) end
     end,
     stderr = function(_, data)
-      if data then table.insert(stderr_chunks, data) end
+      if not data then return end
+      -- Update live status ticker state from streamed tokens/reasoning
+      local words = vim.split(data, "%s+", { trimempty = true })
+      state.token_count = state.token_count + #words
+
+      -- Clean up snippet for statusline display
+      local clean = data:gsub("<thinking>", ""):gsub("</thinking>", ""):gsub("[\r\n]+", " "):gsub("^%s+", "")
+      if clean ~= "" then
+        if #clean > 45 then
+          clean = "..." .. clean:sub(-42)
+        end
+        state.snippet = clean
+      end
     end,
   }, function(res)
-    active_jobs[bufnr] = nil
+    active_job = nil
 
     vim.schedule(function()
+      stop_ticker()
+
       if not vim.api.nvim_buf_is_valid(bufnr) then
         return
       end
 
       local out = table.concat(stdout_chunks, "")
-      local diagnostics = {}
+      local qf_items = {}
 
       for line in out:gmatch("[^\r\n]+") do
-        -- Pattern: <file>:<line>:<col>: error: <msg>
+        -- Format: <file>:<line>:<col>: error: <msg>
         local file, lnum, col, msg = line:match("^([^:]+):(%d+):(%d*):%s*error:%s*(.+)$")
         if not lnum then
-          -- Fallback: <file>:<line>: error: <msg>
           file, lnum, msg = line:match("^([^:]+):(%d+):%s*error:%s*(.+)$")
           col = "1"
         end
 
         if lnum and msg then
-          table.insert(diagnostics, {
-            bufnr = bufnr,
-            lnum = math.max(0, tonumber(lnum) - 1),
-            col = math.max(0, (tonumber(col) or 1) - 1),
-            severity = vim.diagnostic.severity.ERROR,
-            message = msg,
-            source = "lgcc",
+          table.insert(qf_items, {
+            filename = file,
+            lnum = tonumber(lnum),
+            col = tonumber(col) or 1,
+            text = msg,
+            type = "E",
           })
         end
       end
 
-      -- Populate vim.diagnostic for this buffer
-      vim.diagnostic.set(lgcc_ns, bufnr, diagnostics)
-
-      if #diagnostics > 0 then
-        vim.notify(string.format("lgcc: %d logical error(s) detected", #diagnostics), vim.log.levels.ERROR)
+      if #qf_items > 0 then
+        -- Open bottom split with errors (zero in-line buffer pollution)
+        vim.fn.setqflist(qf_items, "r")
+        vim.fn.setqflist({}, "a", { title = "lgcc: " .. file_basename .. " (" .. #qf_items .. " logical errors)" })
+        vim.cmd("botright copen 8")
+        vim.api.nvim_echo({
+          { string.format("✕ [lgcc] %d logical error(s) detected (see bottom split)", #qf_items), "DiagnosticError" },
+        }, true, {})
       else
-        vim.notify("lgcc: clean (no logical errors found)", vim.log.levels.INFO)
+        -- Clean: close quickfix if open, echo success
+        pcall(vim.cmd, "cclose")
+        vim.fn.setqflist({}, "r")
+        vim.api.nvim_echo({
+          { "✓ [lgcc] clean (no logical errors found)", "DiagnosticOk" },
+        }, true, {})
       end
     end)
   end)
-
-  active_jobs[bufnr] = job
 end
 
---- Clear lgcc diagnostics for the current buffer
-function M.clear(bufnr)
-  bufnr = bufnr or vim.api.nvim_get_current_buf()
-  vim.diagnostic.reset(lgcc_ns, bufnr)
-  vim.notify("lgcc: diagnostics cleared", vim.log.levels.INFO)
+--- Clear lgcc results and close bottom split
+function M.clear()
+  if active_job then
+    pcall(function() active_job:kill(9) end)
+    active_job = nil
+  end
+  stop_ticker()
+  pcall(vim.cmd, "cclose")
+  vim.fn.setqflist({}, "r")
+  vim.api.nvim_echo({ { "lgcc: cleared", "Normal" } }, false, {})
 end
 
 -- Unified :lgcc / :Lgcc Command
@@ -155,7 +213,7 @@ end, {
     end
     return {}
   end,
-  desc = "Run logical compiler (lgcc) on current buffer",
+  desc = "Run logical compiler (lgcc) on current buffer with status ticker and bottom split",
 })
 
 return M
