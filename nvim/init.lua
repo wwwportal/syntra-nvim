@@ -277,27 +277,67 @@ vim.keymap.set("n", "<C-S-Up>", function() term_scroll("up") end,
 vim.keymap.set("n", "<C-S-Down>", function() term_scroll("down") end,
 	{ desc = "Scroll terminal scrollback down" })
 
--- Helper functions to open terminal in splits. A new terminal starts in the
--- directory of the last terminal you used (`last_term_cwd`), if any, so you stay
--- in the project you were working in rather than nvim's launch directory.
-local function start_terminal_in_last_cwd()
-	if last_term_cwd then
-		vim.cmd("lcd " .. vim.fn.fnameescape(last_term_cwd))
+-- Helper function: determine the active path of the currently focused window/split.
+-- If a file is open, use the file's parent directory.
+-- If a terminal is open, use the terminal process's current working directory.
+local function get_current_split_dir()
+	local bufnr = vim.api.nvim_get_current_buf()
+
+	-- 1. If currently in a terminal buffer, read the running shell's cwd from /proc
+	if vim.bo[bufnr].buftype == "terminal" then
+		local pid = vim.b[bufnr].terminal_job_pid
+		if pid then
+			local ok, cwd = pcall(vim.uv.fs_readlink, "/proc/" .. pid .. "/cwd")
+			if ok and cwd and vim.fn.isdirectory(cwd) == 1 then
+				return cwd
+			end
+		end
 	end
+
+	-- 2. If a file is open, use the directory containing the file
+	local bufname = vim.api.nvim_buf_get_name(bufnr)
+	if bufname ~= "" and not bufname:match("^term://") then
+		local file_dir = vim.fn.fnamemodify(bufname, ":p:h")
+		if file_dir and vim.fn.isdirectory(file_dir) == 1 then
+			return file_dir
+		end
+	end
+
+	-- 3. If window was opened from a terminal, check that origin terminal's cwd
+	local term_origin = vim.w.terminal_origin
+	if term_origin and vim.api.nvim_buf_is_valid(term_origin) then
+		local pid = vim.b[term_origin].terminal_job_pid
+		if pid then
+			local ok, cwd = pcall(vim.uv.fs_readlink, "/proc/" .. pid .. "/cwd")
+			if ok and cwd and vim.fn.isdirectory(cwd) == 1 then
+				return cwd
+			end
+		end
+	end
+
+	-- 4. Fallback to last recorded terminal cwd or nvim global cwd
+	if last_term_cwd and vim.fn.isdirectory(last_term_cwd) == 1 then
+		return last_term_cwd
+	end
+	return vim.fn.getcwd()
+end
+
+local function open_terminal_split(split_cmd)
+	local target_dir = get_current_split_dir()
+	vim.cmd(split_cmd)
+	if target_dir then
+		vim.cmd("lcd " .. vim.fn.fnameescape(target_dir))
+	end
+	vim.cmd("terminal")
+	vim.cmd("startinsert")
 end
 
 local function term_vsplit()
-	vim.cmd("vsplit")
-	start_terminal_in_last_cwd()
-	vim.cmd("terminal")
-	vim.cmd("startinsert")
+	open_terminal_split("vsplit")
 end
 
 local function term_split()
-	vim.cmd("split")
-	start_terminal_in_last_cwd()
-	vim.cmd("terminal")
-	vim.cmd("startinsert")
+	open_terminal_split("split")
 end
 
 -- Split right / down with a new terminal (matches Hyprland Alt+Shift+= and Alt+Shift+-)
