@@ -630,6 +630,9 @@ require("tasks")
 -- ── First-Time Feature Checklist & Onboarding ──
 require("onboarding").setup()
 
+-- ── Voice Transcription (:v) ──
+require("voice").setup()
+
 
 -- ── Plugin manager (lazy.nvim) ──
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
