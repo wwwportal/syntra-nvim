@@ -35,7 +35,9 @@ function M.start_transcription()
         return
     end
 
-    vim.fn.writefile({}, stream_file)
+    -- Kill any existing stream process
+    vim.fn.system("pkill -f syntra_voice_stream.py 2>/dev/null || true")
+    vim.fn.system("> /tmp/syntra_voice_stream.out")
     last_line = 0
     stream_pid = vim.fn.jobstart({ vim.fn.expand("~/myenv/bin/python"), "/tmp/syntra_voice_stream.py" })
     if stream_pid <= 0 then
