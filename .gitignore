@@ -2,6 +2,10 @@ build/
 *.tmp
 .DS_Store
 
+# Python
+__pycache__/
+*.pyc
+
 # Credentials and secrets
 *.csv
 *.key

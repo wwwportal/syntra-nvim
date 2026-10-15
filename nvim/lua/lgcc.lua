@@ -114,8 +114,20 @@ local function parse_diagnostics(raw, filepath)
   return qf_items
 end
 
+--- Locate bundle_ir.py script
+local function find_bundle_script()
+  local candidates = {
+    vim.fn.expand("~/code/syntra-nvim/scripts/bundle_ir.py"),
+    vim.fn.expand("~/.config/nvim/scripts/bundle_ir.py"),
+  }
+  for _, p in ipairs(candidates) do
+    if vim.uv.fs_stat(p) then return p end
+  end
+  return nil
+end
+
 --- Run native logical compiler on target file or active buffer
---- @param opts? { file?: string, spec?: string, engine?: string, speak?: boolean, bufnr?: number }
+--- @param opts? { file?: string, spec?: string, engine?: string, speak?: boolean, bundle?: boolean, bufnr?: number }
 function M.lint(opts)
   opts = opts or {}
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
@@ -137,15 +149,29 @@ function M.lint(opts)
     vim.cmd("silent write")
   end
 
-  -- Read file and prefix line numbers
-  local lines = vim.fn.readfile(filepath)
-  local numbered_lines = {}
-  for i, line in ipairs(lines) do
-    table.insert(numbered_lines, string.format("%d: %s", i, line))
-  end
-  local numbered_src = table.concat(numbered_lines, "\n")
-
   local file_basename = vim.fn.fnamemodify(filepath, ":t")
+
+  -- Assemble source code or hermetic dependency bundle
+  local code_section = ""
+  if opts.bundle then
+    local bscript = find_bundle_script()
+    if bscript then
+      local res = vim.system({ "python3", bscript, "--bundle", filepath }, { text = true }):wait()
+      if res.code == 0 and res.stdout and res.stdout ~= "" then
+        code_section = res.stdout
+      end
+    end
+  end
+
+  if code_section == "" then
+    local lines = vim.fn.readfile(filepath)
+    local numbered_lines = {}
+    for i, line in ipairs(lines) do
+      table.insert(numbered_lines, string.format("%d: %s", i, line))
+    end
+    code_section = string.format("--- SOURCE CODE (prefixed with line numbers) ---\n%s\n\nFile: %s",
+      table.concat(numbered_lines, "\n"), filepath)
+  end
 
   -- Build prompt
   local spec_section = ""
@@ -158,17 +184,17 @@ function M.lint(opts)
 
   local system_prompt = [[You are the Logical Compiler (lgcc).
 Analyze the provided source code for semantic bugs, invariant violations, and logical flaws.
+Interface contracts and type stubs for imported local modules are provided in the DEPENDENCY SKELETONS section to verify cross-module call correctness.
 Ignore syntax, formatting, and naming conventions.
 If you need heavy dependency context or external code exploration, you may run `opencode run "<query>"` to delegate sub-worker analysis.
 If flaws exist, output each flaw strictly on its own line in this format:
 <file>:<line>: error: <clear description of flaw>
 If there are no logic errors, output: CLEAN]]
 
-  local full_prompt = string.format("%s\n\n%s--- SOURCE CODE (prefixed with line numbers) ---\n%s\n\nFile: %s",
-    system_prompt, spec_section, numbered_src, filepath)
+  local full_prompt = string.format("%s\n\n%s%s", system_prompt, spec_section, code_section)
 
   local initial_engine = opts.engine or "agy"
-  local state = start_ticker(file_basename, initial_engine)
+  local state = start_ticker(file_basename .. (opts.bundle and " [+deps]" or ""), initial_engine)
 
   local function execute_run(engine_name)
     state.engine = engine_name
@@ -279,6 +305,7 @@ end
 vim.api.nvim_create_user_command("Lgcc", function(ctx)
   local fargs = ctx.fargs or {}
   local speak = false
+  local bundle = false
   local spec_path = nil
   local engine = "agy" -- default to agy, with automatic opencode failover
   local target_file = nil
@@ -288,6 +315,8 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
     local arg = fargs[i]
     if arg == "-s" or arg == "--speak" or arg == "speak" then
       speak = true
+    elseif arg == "-b" or arg == "--bundle" or arg == "bundle" then
+      bundle = true
     elseif arg == "--opencode" or arg == "opencode" then
       engine = "opencode"
     elseif arg == "--agy" or arg == "agy" then
@@ -311,13 +340,14 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
     spec = spec_path,
     engine = engine,
     speak = speak,
+    bundle = bundle,
   })
 end, {
   nargs = "*",
   complete = function(arglead, cmdline)
     local parts = vim.split(vim.trim(cmdline), "%s+")
     if #parts <= 2 and not cmdline:match("%s+$") then
-      local subcmds = { "clear", "-s", "--speak", "spec", "--opencode", "--agy", "-l", "--local" }
+      local subcmds = { "clear", "-s", "--speak", "-b", "--bundle", "spec", "--opencode", "--agy", "-l", "--local" }
       return vim.tbl_filter(function(item)
         return vim.startswith(item, arglead)
       end, subcmds)
@@ -327,7 +357,7 @@ end, {
       return vim.fn.getcompletion(arglead, "file")
     end
   end,
-  desc = "Run logical compiler (lgcc) with live status ticker, Quickfix results, and agy/opencode failover; use -s for voice summary",
+  desc = "Run logical compiler (lgcc) with live status ticker, Quickfix results, and agy/opencode failover; use -s for voice summary, -b for dependency bundling",
 })
 
 return M
