@@ -20,51 +20,55 @@ print(text)
     return out:gsub("\n", ""):gsub("\r", "")
 end
 
+local stream_file = "/tmp/syntra_voice_stream.out"
+local stream_pid = nil
+local timer = nil
+local last_line = 0
+
 function M.start_transcription()
-    -- Save current cursor position
-    local cur_buf = vim.api.nvim_get_current_buf()
-    local cur_win = vim.api.nvim_get_current_win()
-    local row, col = unpack(vim.api.nvim_win_get_cursor(cur_win))
-
-    -- Notify user recording started
-    vim.notify("Recording... (press Enter to stop, or wait 5s)", vim.log.levels.INFO)
-
-    -- Start recording with arecord (5s max for simplicity)
-    -- For interactive stop, we use a simple approach: start arecord in background,
-    -- notify user, and after a brief delay process what we have.
-    -- A more robust approach: start arecord without time limit and rely on a signal
-    -- to stop. For initial implementation, we use a fixed 5-second window.
-    local cmd = string.format("arecord -q -f cd -t wav -d 5 -c 1 %s 2>/dev/null", audio_path)
-    vim.fn.system(cmd)
-
-    -- Check if file exists and has content
-    if vim.fn.filereadable(audio_path) == 0 or vim.fn.getfsize(audio_path) < 100 then
-        vim.notify("No audio recorded", vim.log.levels.WARN)
+    -- Toggle continuous mode on/off via :v
+    if stream_pid and vim.fn.jobwait({stream_pid}, 0)[1] == 0 then
+        vim.fn.jobstop(stream_pid)
+        stream_pid = nil
+        if timer then timer:stop(); timer = nil end
+        vim.notify(":v continuous mode stopped", vim.log.levels.INFO)
         return
     end
 
-    -- Process transcription
-    vim.notify("Transcribing...", vim.log.levels.INFO)
-    local text, err = transcribe_audio()
-
-    if not text or text == "" then
-        vim.notify("Transcription failed or empty: " .. (err or ""), vim.log.levels.ERROR)
+    vim.fn.writefile({}, stream_file)
+    last_line = 0
+    stream_pid = vim.fn.jobstart({ vim.fn.expand("~/myenv/bin/python"), "/tmp/syntra_voice_stream.py" })
+    if stream_pid <= 0 then
+        vim.notify("Failed to start voice stream", vim.log.levels.ERROR)
+        stream_pid = nil
         return
     end
-
-    -- Insert at cursor position (pushing text forward)
-    local line = vim.api.nvim_buf_get_lines(cur_buf, row - 1, row, false)[1] or ""
-    local before = line:sub(1, col)
-    local after = line:sub(col + 1)
-    local new_line = before .. text .. after
-
-    vim.api.nvim_buf_set_lines(cur_buf, row - 1, row, false, { new_line })
-
-    -- Move cursor to end of inserted text
-    local new_col = #before + #text
-    vim.api.nvim_win_set_cursor(cur_win, { row, new_col })
-
-    vim.notify("Transcription inserted: " .. text, vim.log.levels.INFO)
+    vim.notify(":v continuous listening started (run :v again to stop)", vim.log.levels.INFO)
+    timer = vim.loop.new_timer()
+    timer:start(500, 500, vim.schedule_wrap(function()
+        if not vim.api.nvim_buf_is_valid(0) then return end
+        local lines = vim.fn.readfile(stream_file)
+        if #lines <= last_line then return end
+        local cur_buf = vim.api.nvim_get_current_buf()
+        local cur_win = vim.api.nvim_get_current_win()
+        local row, col = unpack(vim.api.nvim_win_get_cursor(cur_win))
+        local inserted = false
+        for i = last_line + 1, #lines do
+            local text = lines[i]:gsub("\r", ""):gsub("\n", "")
+            if text ~= "" then
+                local line_text = vim.api.nvim_buf_get_lines(cur_buf, row - 1, row, false)[1] or ""
+                local before = line_text:sub(1, col)
+                local after = line_text:sub(col + 1)
+                vim.api.nvim_buf_set_lines(cur_buf, row - 1, row, false, { before .. text .. after })
+                col = #before + #text
+                inserted = true
+            end
+        end
+        if inserted then
+            vim.api.nvim_win_set_cursor(cur_win, { row, col })
+        end
+        last_line = #lines
+    end))
 end
 
 function M.setup()
