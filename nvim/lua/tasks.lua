@@ -124,8 +124,91 @@ local function find_lint_tasks(target)
   return nil
 end
 
+--- Set up buffer-local keymaps in the quickfix window to route jumps to the calling split
+--- @param origin_win number
+local function setup_qf_keymaps(origin_win)
+  local qf_win = vim.api.nvim_get_current_win()
+  local qf_buf = vim.api.nvim_win_get_buf(qf_win)
+
+  -- 'q' closes the quickfix window and returns focus to origin_win
+  vim.keymap.set("n", "q", function()
+    vim.cmd("cclose")
+    if vim.api.nvim_win_is_valid(origin_win) then
+      vim.api.nvim_set_current_win(origin_win)
+    end
+  end, { buffer = qf_buf, silent = true, noremap = true, desc = "Close Tasks window" })
+
+  -- Function to perform the jump into origin_win
+  local function jump_in_origin(close_qf)
+    local idx = vim.fn.line(".")
+    local qf_list = vim.fn.getqflist()
+    local item = qf_list[idx]
+    if not item then return end
+
+    local filepath = (item.filename and item.filename ~= "") and item.filename
+    if not filepath or filepath == "" then
+      if item.bufnr and item.bufnr > 0 and vim.api.nvim_buf_is_valid(item.bufnr) then
+        filepath = vim.api.nvim_buf_get_name(item.bufnr)
+      end
+    end
+
+    if not filepath or filepath == "" then
+      vim.notify("Selected task has no associated file location", vim.log.levels.INFO)
+      return
+    end
+
+    local target_win = origin_win
+    if not vim.api.nvim_win_is_valid(target_win) or target_win == qf_win then
+      -- Fallback: find any non-quickfix window
+      target_win = nil
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if win ~= qf_win then
+          target_win = win
+          break
+        end
+      end
+    end
+
+    if not target_win or not vim.api.nvim_win_is_valid(target_win) then
+      vim.cmd("cc " .. idx)
+      return
+    end
+
+    if close_qf then
+      vim.cmd("cclose")
+    end
+
+    -- Switch focus to the origin split
+    vim.api.nvim_set_current_win(target_win)
+
+    -- Open the file in this exact split
+    vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+
+    -- Move cursor to line & column and center
+    local lnum = math.max(1, item.lnum or 1)
+    local col = math.max(0, (item.col or 1) - 1)
+    pcall(vim.api.nvim_win_set_cursor, target_win, { lnum, col })
+    vim.cmd("normal! zz")
+  end
+
+  -- <CR> jumps into origin_win (keeps quickfix open for easy browsing)
+  vim.keymap.set("n", "<CR>", function()
+    jump_in_origin(false)
+  end, { buffer = qf_buf, silent = true, noremap = true, desc = "Jump to task in origin split" })
+
+  -- Double-click jumps into origin_win
+  vim.keymap.set("n", "<2-LeftMouse>", function()
+    jump_in_origin(false)
+  end, { buffer = qf_buf, silent = true, noremap = true, desc = "Jump to task in origin split" })
+
+  -- 'o' jumps and closes quickfix
+  vim.keymap.set("n", "o", function()
+    jump_in_origin(true)
+  end, { buffer = qf_buf, silent = true, noremap = true, desc = "Jump to task and close Tasks split" })
+end
+
 --- Show in-tree Source-First TODO DAG
-local function show_repo_tasks(script_path)
+local function show_repo_tasks(script_path, origin_win)
   local cmd = { "python3", script_path, "--json" }
   local out = vim.fn.system(cmd)
   if vim.v.shell_error ~= 0 and out == "" then
@@ -170,13 +253,14 @@ local function show_repo_tasks(script_path)
   vim.fn.setqflist(qf, "r")
   vim.fn.setqflist({}, "a", { title = string.format("%s Source Tasks (%d tasks in DAG)", repo_name, #tasks) })
   vim.cmd("botright copen 12")
+  setup_qf_keymaps(origin_win)
   vim.api.nvim_echo({
-    { string.format("● Loaded %d in-tree tasks for %s (Press <CR> to jump, q to close)", #tasks, repo_name), "ModeMsg" }
+    { string.format("● Loaded %d in-tree tasks for %s (<CR> to jump in split, o to jump & close, q to close)", #tasks, repo_name), "ModeMsg" }
   }, false, {})
 end
 
 --- Show global Taskwarrior tasks
-local function show_taskwarrior()
+local function show_taskwarrior(origin_win)
   if vim.fn.executable("task") ~= 1 then
     vim.notify("tasks: 'task' (Taskwarrior) executable not found in PATH", vim.log.levels.ERROR)
     return
@@ -212,6 +296,7 @@ local function show_taskwarrior()
   vim.fn.setqflist(qf, "r")
   vim.fn.setqflist({}, "a", { title = string.format("Taskwarrior Tasks (%d pending)", #tasks) })
   vim.cmd("botright copen 12")
+  setup_qf_keymaps(origin_win)
   vim.api.nvim_echo({
     { string.format("● Loaded %d Taskwarrior tasks (q to close)", #tasks), "ModeMsg" }
   }, false, {})
@@ -220,20 +305,21 @@ end
 --- Main entry point for :Tasks command
 --- @param target? string "prover" | "syntra" | "syntra-nvim" | "tw" | "taskwarrior" | nil
 function M.tasks(target)
+  local origin_win = vim.api.nvim_get_current_win()
   target = target and vim.trim(target):lower() or ""
 
   if target == "tw" or target == "taskwarrior" then
-    show_taskwarrior()
+    show_taskwarrior(origin_win)
     return
   end
 
   local lint_script = find_lint_tasks(target)
   if lint_script then
-    show_repo_tasks(lint_script)
+    show_repo_tasks(lint_script, origin_win)
   elseif target == "prover" or target == "syntra" or target == "syntra-nvim" then
     vim.notify(string.format("tasks: Could not find %s's lint_tasks.py script", target), vim.log.levels.ERROR)
   else
-    show_taskwarrior()
+    show_taskwarrior(origin_win)
   end
 end
 
