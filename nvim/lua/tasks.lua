@@ -8,17 +8,33 @@
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior and in-tree source TODOs.
 -- Criterion: review: ":Tasks displays integrated agenda view with source TODOs and Taskwarrior tasks"
 
--- TODO(lgcc-dep-bundle | tier:A | blocks:[lgcc-task-synthesizer, lgcc-compressed-ir]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
+-- TODO(ir-ast-extractor | tier:A | blocks:[ir-contract-skeletonizer]): Extract symbols, declarations, and import edges from Python and Lua ASTs.
+-- Description: Implement AST traversal using Python ast and Lua Tree-sitter to parse source files into structured declaration lists and import edges.
+-- Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
+
+-- TODO(ir-contract-skeletonizer | tier:A | depends_on:[ir-ast-extractor] | blocks:[lgcc-dep-bundle]): Skeletonize implementation bodies while preserving signatures and invariants.
+-- Description: Replace function and method bodies with stubs while retaining complete type annotations, docstring invariants, and interface definitions.
+-- Criterion: review: "Skeletonizer achieves >70% character and token reduction on target modules while preserving all exported signatures"
+
+-- TODO(lgcc-dep-bundle | tier:A | depends_on:[ir-contract-skeletonizer] | blocks:[lgcc-task-synthesizer, ir-graph-builder]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
 -- Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
 -- Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
 
--- TODO(lgcc-compressed-ir | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
+-- TODO(ir-graph-builder | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[router-topological-pruner]): Construct global multi-file repository symbol dependency graph.
+-- Description: Traverse all tracked repository source files to build a global symbol dependency graph linking callers, callees, and imported types.
+-- Criterion: review: "scripts/bundle_ir.py --graph returns full repository symbol DAG with verified node and edge counts"
+
+-- TODO(router-topological-pruner | tier:B | depends_on:[ir-graph-builder] | blocks:[router-budget-knapsack]): Compute topological distance and PageRank importance weighting on symbol graph.
+-- Description: Given target file, assign importance weights W(v|q) to graph nodes using distance decay and Personalized PageRank.
+-- Criterion: review: "Router ranks 1-hop and 2-hop dependent symbols higher than unrelated repository symbols"
+
+-- TODO(router-budget-knapsack | tier:B | depends_on:[router-topological-pruner] | blocks:[lgcc-compressed-ir]): Implement knapsack context allocator bounded by token budget.
+-- Description: Select optimal symbol subgraph maximizing information coverage score while staying strictly within active context token budget.
+-- Criterion: review: "Router output token count stays under specified budget while maximizing coverage score"
+
+-- TODO(lgcc-compressed-ir | tier:B | depends_on:[router-budget-knapsack] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
 -- Description: Implement a compact AST/interface representation (symbol dependency graph and skeletonized type stubs) to keep full repository context in the model's active window without blowing up token limits.
 -- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
-
--- TODO(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
--- Description: Extend lgcc to scan entire directories and multi-file projects using the compressed intermediate representation to detect cross-module invariant violations and systemic flaws.
--- Criterion: review: "lgcc directory execution passes compressed project context and populates Quickfix with multi-file error locations"
 
 -- TODO(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
@@ -27,6 +43,10 @@
 -- TODO(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks]): Package and version syntra-nvim Debian release with verified task DAG.
 -- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.
 -- Criterion: review: "dpkg-deb -I syntra-nvim_1.0.0_all.deb succeeds and apt repository index matches"
+
+-- TODO(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
+-- Description: Extend lgcc to scan entire directories and multi-file projects using the compressed intermediate representation to detect cross-module invariant violations and systemic flaws.
+-- Criterion: review: "lgcc directory execution passes compressed project context and populates Quickfix with multi-file error locations"
 
 local M = {}
 
