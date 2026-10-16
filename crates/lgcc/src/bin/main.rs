@@ -278,20 +278,20 @@ fn main() {
         return;
     }
 
-    if mode == "--extract" && args.len() >= 3 {
+    if (mode == "extract" || mode == "--extract") && args.len() >= 3 {
         let p = Path::new(&args[2]);
         let mod_data = Extractor::extract(p);
         println!("{}", Extractor::to_json(&mod_data));
         return;
     }
 
-    if mode == "--skeletonize" && args.len() >= 3 {
+    if (mode == "skeletonize" || mode == "--skeletonize") && args.len() >= 3 {
         let p = Path::new(&args[2]);
         print!("{}", Skeletonizer::skeletonize(p));
         return;
     }
 
-    if mode == "--metrics" && args.len() >= 3 {
+    if (mode == "metrics" || mode == "--metrics") && args.len() >= 3 {
         let p = Path::new(&args[2]);
         let m = Skeletonizer::compute_metrics(p);
         println!("Metrics for {}:", p.display());
@@ -301,7 +301,7 @@ fn main() {
         return;
     }
 
-    if mode == "--route" && args.len() >= 3 {
+    if (mode == "route" || mode == "--route") && args.len() >= 3 {
         let target_path = PathBuf::from(&args[2]);
         let mut budget = 4000;
         let mut format_ir = false;

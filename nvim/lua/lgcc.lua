@@ -11,6 +11,12 @@ local M = {}
 
 local active_job = nil
 local ticker_timer = nil
+local ns_lgcc = vim.api.nvim_create_namespace("lgcc_diagnostics")
+
+-- Setup custom highlight groups
+vim.api.nvim_set_hl(0, "LgccStreamGray", { fg = "#7e8294", italic = true, default = true })
+vim.api.nvim_set_hl(0, "LgccSpinner", { fg = "#7aa2f7", bold = true, default = true })
+vim.api.nvim_set_hl(0, "LgccInlineError", { fg = "#f7768e", bold = true, default = true })
 
 -- Close quickfix window easily with 'q' or '<Esc>'
 vim.api.nvim_create_autocmd("FileType", {
@@ -57,14 +63,29 @@ local function start_ticker(filename, engine)
     raw_tail = "starting...",
   }
 
-  ticker_timer = vim.uv.new_timer()
-  ticker_timer:start(0, 100, vim.schedule_wrap(function()
-    if not ticker_timer then return end
+  local function render()
     frame = (frame % #spinner) + 1
     local spin = spinner[frame]
     local tail = state.raw_tail or "analyzing..."
-    local msg = string.format("%s [lgcc:%s] %s: %s", spin, state.engine, filename, tail)
-    vim.api.nvim_echo({ { msg, "ModeMsg" } }, false, {})
+    local prefix = string.format("%s [lgcc:%s] %s: ", spin, state.engine, filename)
+    local cols = vim.o.columns or 80
+    local max_tail = math.max(15, cols - #prefix - 4)
+    local display_tail = tail
+    if #display_tail > max_tail then
+      display_tail = "..." .. display_tail:sub(#display_tail - max_tail + 4)
+    end
+    vim.api.nvim_echo({
+      { prefix, "LgccSpinner" },
+      { display_tail, "LgccStreamGray" },
+    }, false, {})
+  end
+
+  state.render = render
+
+  ticker_timer = vim.uv.new_timer()
+  ticker_timer:start(0, 80, vim.schedule_wrap(function()
+    if not ticker_timer then return end
+    render()
   end))
 
   return state
@@ -116,13 +137,20 @@ end
 
 --- Locate native lgcc Rust binary
 local function find_lgcc_bin()
+  local exepath = vim.fn.exepath("lgcc")
+  if exepath ~= "" and vim.fn.executable(exepath) == 1 then
+    return exepath
+  end
   local candidates = {
+    vim.fn.expand("~/code/syn-nvim/bin/lgcc"),
     vim.fn.expand("~/code/syntra-nvim/bin/lgcc"),
+    vim.fn.expand("~/.local/bin/lgcc"),
     vim.fn.expand("~/.config/nvim/bin/lgcc"),
-    vim.fn.expand("/usr/local/bin/lgcc"),
+    "/usr/local/bin/lgcc",
+    "/usr/bin/lgcc",
   }
   for _, p in ipairs(candidates) do
-    if vim.uv.fs_stat(p) then return p end
+    if vim.fn.executable(p) == 1 or vim.uv.fs_stat(p) then return p end
   end
   return nil
 end
@@ -256,7 +284,7 @@ If there are no logic errors, output: CLEAN]]
     if engine_name == "agy" then
       cmd = { "agy", "-p", full_prompt, "--dangerously-skip-permissions", "--output-format", "text" }
     elseif engine_name == "opencode" then
-      cmd = { "opencode", "run", full_prompt }
+      cmd = { "opencode", "run", "--auto", full_prompt }
     else
       -- Local fallback
       local model = vim.fn.expand("~/code/agent/vendor/models/qwen2.5-coder-7b/qwen2.5-coder-7b-instruct-q6_k.gguf")
@@ -274,21 +302,23 @@ If there are no logic errors, output: CLEAN]]
         raw_stream = raw_stream .. data
 
         local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
-        if #clean > 55 then
-          state.raw_tail = "..." .. clean:sub(-52)
-        elseif #clean > 0 then
-          state.raw_tail = clean
-        end
+        state.raw_tail = clean
+        vim.schedule(function()
+          if ticker_timer and state.render then
+            state.render()
+          end
+        end)
       end,
       stderr = function(_, data)
         if not data then return end
         raw_stream = raw_stream .. data
         local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
-        if #clean > 55 then
-          state.raw_tail = "..." .. clean:sub(-52)
-        elseif #clean > 0 then
-          state.raw_tail = clean
-        end
+        state.raw_tail = clean
+        vim.schedule(function()
+          if ticker_timer and state.render then
+            state.render()
+          end
+        end)
       end,
     }, function(res)
       active_job = nil
@@ -308,14 +338,58 @@ If there are no logic errors, output: CLEAN]]
       vim.schedule(function()
         stop_ticker()
 
+        -- Clear previous in-line diagnostics
+        vim.diagnostic.reset(ns_lgcc)
+        for _, b in ipairs(vim.api.nvim_list_bufs()) do
+          pcall(vim.api.nvim_buf_clear_namespace, b, ns_lgcc, 0, -1)
+        end
+
         local qf_items = parse_diagnostics(out, filepath)
 
         if #qf_items > 0 then
+          local diags_by_buf = {}
+          for _, item in ipairs(qf_items) do
+            local fname = item.filename
+            local b = vim.fn.bufnr(fname)
+            if b == -1 or not vim.api.nvim_buf_is_loaded(b) then
+              b = vim.fn.bufadd(fname)
+              pcall(vim.fn.bufload, b)
+            end
+            diags_by_buf[b] = diags_by_buf[b] or {}
+            local lnum = math.max(0, (item.lnum or 1) - 1)
+            table.insert(diags_by_buf[b], {
+              bufnr = b,
+              lnum = lnum,
+              col = math.max(0, (item.col or 1) - 1),
+              severity = vim.diagnostic.severity.ERROR,
+              source = "lgcc:" .. engine_name,
+              message = item.text,
+            })
+
+            -- Attach in-line red comment directly at the end of the line
+            pcall(vim.api.nvim_buf_set_extmark, b, ns_lgcc, lnum, 0, {
+              virt_text = { { "  ✖ " .. item.text, "DiagnosticError" } },
+              virt_text_pos = "eol",
+              hl_mode = "combine",
+            })
+          end
+
+          for b, diags in pairs(diags_by_buf) do
+            vim.diagnostic.set(ns_lgcc, b, diags, {
+              signs = true,
+              underline = true,
+              virtual_text = false,
+            })
+          end
+
           vim.fn.setqflist(qf_items, "r")
           vim.fn.setqflist({}, "a", { title = string.format("lgcc [%s]: %s (%d logical errors)", engine_name, file_basename, #qf_items) })
-          vim.cmd("botright copen 8")
+          if opts.qf then
+            vim.cmd("botright copen 8")
+          end
+
           vim.api.nvim_echo({
-            { string.format("✕ [lgcc:%s] %d logical error(s) detected (see bottom split)", engine_name, #qf_items), "DiagnosticError" },
+            { string.format("● [lgcc:%s] %d logical error(s) flagged in-line in red (navigate with ]d / [d)", engine_name, #qf_items), "DiagnosticError" },
           }, true, {})
 
           if opts.speak then
@@ -341,7 +415,7 @@ If there are no logic errors, output: CLEAN]]
   execute_run(initial_engine)
 end
 
---- Clear lgcc results and close bottom split
+--- Clear lgcc results and remove in-line diagnostics
 function M.clear()
   if active_job then
     pcall(function() active_job:kill(9) end)
@@ -350,8 +424,19 @@ function M.clear()
   stop_ticker()
   pcall(vim.cmd, "cclose")
   vim.fn.setqflist({}, "r")
-  vim.api.nvim_echo({ { "lgcc: cleared", "Normal" } }, false, {})
+  vim.diagnostic.reset(ns_lgcc)
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    pcall(vim.api.nvim_buf_clear_namespace, b, ns_lgcc, 0, -1)
+  end
+  vim.api.nvim_echo({ { "lgcc: in-line diagnostics cleared", "Normal" } }, false, {})
 end
+
+-- SPEC(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
+-- Description: Integrate bundle_ir.py --route --budget into lgcc.lua with optional --budget argument for dynamic context allocation.
+-- Criterion: review: ":Lgcc --budget 4000 dynamically queries router and passes knapsack-allocated IR context"
+-- [lean:spec]
+-- def lgcc_cli_router_hook : Bool := ir_schema_formatter
+-- theorem lgcc_cli_router_hook_verified : lgcc_cli_router_hook = true := by rfl
 
 -- Unified :Lgcc Command
 vim.api.nvim_create_user_command("Lgcc", function(ctx)
@@ -360,24 +445,21 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
   local bundle = true -- default to true for smart context routing
   local user_budget = nil
   local spec_path = nil
+  local open_qf = false
   local engine = "agy" -- default to agy, with automatic opencode failover
   local target_file = nil
   local i = 1
 
   while i <= #fargs do
     local arg = fargs[i]
-    -- SPEC(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
-    -- Description: Integrate bundle_ir.py --route --budget into lgcc.lua with optional --budget argument for dynamic context allocation.
-    -- Criterion: review: ":Lgcc --budget 4000 dynamically queries router and passes knapsack-allocated IR context"
-    -- [lean:spec]
-    -- def lgcc_cli_router_hook : Bool := ir_schema_formatter
-    -- theorem lgcc_cli_router_hook_verified : lgcc_cli_router_hook = true := by rfl
     if arg == "-s" or arg == "--speak" or arg == "speak" then
       speak = true
     elseif arg == "-b" or arg == "--bundle" or arg == "bundle" then
       bundle = true
     elseif arg == "--no-bundle" or arg == "no-bundle" then
       bundle = false
+    elseif arg == "--qf" or arg == "qf" then
+      open_qf = true
     elseif arg == "--budget" or arg == "budget" then
       i = i + 1
       user_budget = tonumber(fargs[i])
@@ -406,6 +488,7 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
     speak = speak,
     bundle = bundle,
     budget = user_budget,
+    qf = open_qf,
   })
 end, {
   nargs = "*",
