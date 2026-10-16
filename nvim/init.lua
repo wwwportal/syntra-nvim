@@ -655,6 +655,12 @@ require("voice").setup()
 -- ── Logical Compiler (:Lgcc [-s]) ──
 require("lgcc")
 
+-- Ergonomic shortcuts to stay in source code
+vim.keymap.set("n", "<leader>l", "<Cmd>Lgcc<CR>", { silent = true, desc = "Run Lgcc in-line on active buffer" })
+vim.keymap.set("n", "<leader>lx", "<Cmd>Lgcc clear<CR>", { silent = true, desc = "Clear Lgcc in-line diagnostics" })
+vim.keymap.set("n", "<leader>ls", "<Cmd>Specs<CR>", { silent = true, desc = "Open in-tree specs list" })
+vim.keymap.set("n", "<leader>lg", "<Cmd>Specs graph<CR>", { silent = true, desc = "Open visual specs DAG" })
+
 
 -- ── Plugin manager (lazy.nvim) ──
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"

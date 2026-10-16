@@ -282,7 +282,7 @@ If there are no logic errors, output: CLEAN]]
 
     local cmd = {}
     if engine_name == "agy" then
-      cmd = { "agy", "-p", full_prompt, "--dangerously-skip-permissions", "--output-format", "text" }
+      cmd = { "agy", "-p", full_prompt, "--dangerously-skip-permissions", "--disable-slash-commands", "--output-format", "stream-json" }
     elseif engine_name == "opencode" then
       cmd = { "opencode", "run", "--auto", full_prompt }
     else
@@ -293,16 +293,45 @@ If there are no logic errors, output: CLEAN]]
 
     local stdout_chunks = {}
     local raw_stream = ""
+    local job_timeout = nil
+
+    -- 35-second hard timeout guard to prevent hangs
+    job_timeout = vim.uv.new_timer()
+    job_timeout:start(35000, 0, vim.schedule_wrap(function()
+      if active_job then
+        vim.notify("lgcc: " .. engine_name .. " reasoning timed out after 35s. Cancelling.", vim.log.levels.WARN)
+        pcall(function() active_job:kill(9) end)
+        active_job = nil
+        stop_ticker()
+      end
+      if job_timeout then
+        pcall(function() job_timeout:stop(); job_timeout:close() end)
+        job_timeout = nil
+      end
+    end))
 
     active_job = vim.system(cmd, {
       text = true,
       stdout = function(_, data)
         if not data then return end
         table.insert(stdout_chunks, data)
-        raw_stream = raw_stream .. data
 
-        local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
-        state.raw_tail = clean
+        -- Parse stream-json text_delta or raw streaming text
+        for line in data:gmatch("[^\r\n]+") do
+          local delta = line:match('"text_delta"%s*:%s*"(.-)"')
+          if delta then
+            delta = delta:gsub("\\n", " "):gsub('\\"', '"'):gsub("\\\\", "\\")
+            raw_stream = raw_stream .. delta
+            state.raw_tail = raw_stream
+          elseif not line:find('^{"event"') then
+            local clean = line:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
+            if clean ~= "" then
+              raw_stream = raw_stream .. " " .. clean
+              state.raw_tail = raw_stream
+            end
+          end
+        end
+
         vim.schedule(function()
           if ticker_timer and state.render then
             state.render()
@@ -322,8 +351,23 @@ If there are no logic errors, output: CLEAN]]
       end,
     }, function(res)
       active_job = nil
+      if job_timeout then
+        pcall(function() job_timeout:stop(); job_timeout:close() end)
+        job_timeout = nil
+      end
 
-      local out = table.concat(stdout_chunks, "")
+      local raw_out = table.concat(stdout_chunks, "")
+      local out = ""
+      -- Extract final response from stream-json if present
+      for line in raw_out:gmatch("[^\r\n]+") do
+        local resp = line:match('"response"%s*:%s*"(.-)"')
+        if resp then
+          out = out .. resp:gsub("\\n", "\n"):gsub('\\"', '"'):gsub("\\\\", "\\")
+        end
+      end
+      if out == "" then
+        out = raw_out
+      end
 
       -- Failover condition: If agy failed (exit non-zero, quota exceeded, or empty output)
       local is_quota_error = out:match("RESOURCE_EXHAUSTED") or out:match("quota") or out:match("429")
