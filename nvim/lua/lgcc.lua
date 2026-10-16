@@ -114,7 +114,7 @@ local function parse_diagnostics(raw, filepath)
   return qf_items
 end
 
---- Locate native lgcc C++ binary
+--- Locate native lgcc Rust binary
 local function find_lgcc_bin()
   local candidates = {
     vim.fn.expand("~/code/syntra-nvim/bin/lgcc"),

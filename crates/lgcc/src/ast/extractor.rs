@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 // {"kind":"theorem","name":"ir_ast_extractor_verified","parameters":[],"proof":{"kind":"decide"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"ir_ast_extractor"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 // SPEC(lgcc-spec-scanner | tier:B | depends_on:[tasks-lexlean-invariant-synthesis] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
-// Description: Implement in-line specification patch scanner in lgcc C++ extracting distributed LexLean fragments and dependency tags across all source files.
+// Description: Implement in-line specification patch scanner in native Rust extracting distributed LexLean fragments and dependency tags across all source files.
 // Criterion: assert: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
 // [lexlean:declarations]
 // {"constructors":[{"fields":[],"name":"TierA"},{"fields":[],"name":"TierB"},{"fields":[],"name":"TierC"}],"kind":"inductive","name":"Tier","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"tasks_lexlean_invariant_synthesis"},"kind":"call"},"kind":"definition","name":"lgcc_spec_scanner","parameters":[],"result":{"kind":"bool"}}
@@ -34,8 +34,8 @@ use std::path::{Path, PathBuf};
 // {"kind":"theorem","name":"prismpm_jit_verifier_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 // SPEC(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
-// Description: Consume verified Rust crates emitted by prismpm through its C ABI layer (prod_codegen::CBindings / extern "C") to expose contract verification functions and invariants directly to C++.
-// Criterion: assert: "cargo build produces static/dynamic library with C headers linking cleanly into C++ test runner"
+// Description: Consume verified Rust crates emitted by prismpm through its C ABI layer (prod_codegen::CBindings / extern "C") to expose contract verification functions and invariants directly to the Rust engine and FFI.
+// Criterion: assert: "cargo build produces native binary linking cleanly into spec test runner"
 // [lexlean:declarations]
 // {"body":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"kind":"definition","name":"prismpm_rust_bridge","parameters":[],"result":{"kind":"bool"}}
 // [lexlean:theorems]

@@ -8,8 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
 
-// SPEC(lgcc-native-linter | tier:A | depends_on:[spec-jit-patch-schema] | blocks:[tasks-add-spec-scaffold]): Rewrite scripts/lint_tasks.py into native C++20 inside lgcc.
-// Description: Rewrite scripts/lint_tasks.py into native C++20 inside lgcc, implementing high-performance task DAG validation, anti-erasure git checks, lazy-TODO detection, and JSON export.
+// SPEC(lgcc-native-linter | tier:A | depends_on:[spec-jit-patch-schema] | blocks:[tasks-add-spec-scaffold]): Rewrite scripts/lint_tasks.py into native Rust inside lgcc.
+// Description: Rewrite scripts/lint_tasks.py into native Rust inside lgcc, implementing high-performance task DAG validation, anti-erasure git checks, lazy-TODO detection, and JSON export.
 // Criterion: assert: "lgcc --lint-tasks validates repository DAG and anti-erasure constraints in <15ms with full feature parity to Python linter"
 // [lexlean:declarations]
 // {"body":{"arguments":[],"function":{"name":"spec_jit_patch_schema"},"kind":"call"},"kind":"definition","name":"lgcc_native_linter","parameters":[],"result":{"kind":"bool"}}
