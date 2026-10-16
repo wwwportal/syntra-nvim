@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# tasks: Source-First Task Graph & Taskwarrior CLI
-# Mirrors Neovim's :Tasks command directly in the terminal.
+# specs / tasks: Source-First Specification & Task DAG CLI
+# Mirrors Neovim's :Specs command directly in the terminal.
 #
 # Commands:
-#   tasks [list] [dir]        List in-tree tasks ordered by Tier A/B/C
-#   tasks --json [dir]        Export task DAG as machine-readable JSON
-#   tasks fix [--apply] [dir] Convert unstructured TODOs into verified contracts
-#   tasks verify [dir]        Verify LexLean specs via proof replay
-#   tasks add [file] <TODO|FIXME|SPEC>:<desc>  Scaffold a structured task contract
-#   tasks tw [args...]        Interact with Taskwarrior
-#   tasks --help              Show this help message
+#   specs [list] [dir]        List in-tree specifications ordered by Tier A/B/C
+#   specs informal [dir]      List informal TODO/FIXME tasks needing formal Lean 4 specification
+#   specs draft [dir]         List draft specifications with open proof obligations
+#   specs verified [dir]      List verified Lean 4 specification tasks
+#   specs --json [dir]        Export specification DAG as machine-readable JSON
+#   specs fix [--apply] [dir] Convert unstructured TODOs into verified contracts
+#   specs verify [dir]        Verify LexLean specs via proof replay
+#   specs add [file] <tag>:<desc>  Scaffold a structured contract
+#   specs --help              Show this help message
 # ==============================================================================
 
 set -euo pipefail
@@ -40,30 +42,28 @@ fi
 
 show_help() {
     cat <<EOF
-tasks: Source-First Task Graph & Taskwarrior CLI (Dual Neovim / Terminal)
+specs / tasks: Source-First Specification & Task DAG CLI (Dual Neovim / Terminal)
 
 Usage:
-  tasks [COMMAND] [OPTIONS]
+  specs [COMMAND] [OPTIONS]
 
 Commands:
-  tasks, tasks list [dir]        Scan in-tree task DAG and display tiered report (Tier A/B/C)
-  tasks informal [dir]           List informal TODO/FIXME tasks needing formal Lean 4 specification
-  tasks draft [dir]              List draft specifications with open proof obligations
-  tasks verified [dir]           List verified Lean 4 specification tasks
-  tasks --json [dir]             Export in-tree task DAG as formatted JSON
-  tasks fix [--apply] [dir]      Synthesize structured task contracts from unstructured comments
-  tasks verify [dir]             Execute formal LexLean proof replay via native Rust engine
-  tasks add [file] <tag>:<desc>  Add a task contract (tag: TODO, FIXME, SPEC)
-  tasks tw, tasks taskwarrior    View or manage global Taskwarrior tasks
-  tasks help, --help, -h         Display this help guide
+  specs, specs list [dir]        Scan in-tree task DAG and display tiered report (Tier A/B/C)
+  specs informal [dir]           List informal TODO/FIXME tasks needing formal Lean 4 specification
+  specs draft [dir]              List draft specifications with open proof obligations
+  specs verified [dir]           List verified Lean 4 specification tasks
+  specs --json [dir]             Export in-tree task DAG as formatted JSON
+  specs fix [--apply] [dir]      Synthesize structured task contracts from unstructured comments
+  specs verify [dir]             Execute formal LexLean proof replay via native Rust engine
+  specs add [file] <tag>:<desc>  Add a task contract (tag: TODO, FIXME, SPEC)
+  specs help, --help, -h         Display this help guide
 
 Examples:
-  tasks                          # View all in-tree tasks in current repository
-  tasks informal                 # Show tasks needing formalization in Lean 4
-  tasks fix                      # Dry-run contract synthesis for lazy comments
-  tasks fix --apply              # Automatically rewrite lazy comments into verified contracts
-  tasks verify                   # Verify all 36+ machine-checked Lean 4 theorems
-  tasks tw                       # View pending Taskwarrior agenda
+  specs                          # View all in-tree specs in current repository
+  specs informal                 # Show tasks needing formalization in Lean 4
+  specs fix                      # Dry-run contract synthesis for lazy comments
+  specs fix --apply              # Automatically rewrite lazy comments into verified contracts
+  specs verify                   # Verify all machine-checked Lean 4 theorems
 EOF
 }
 
@@ -109,12 +109,9 @@ case "$CMD" in
         exec "$LGCC_BIN" --verify-specs "$TARGET_DIR"
         ;;
     tw|taskwarrior)
-        shift || true
-        if ! command -v task &>/dev/null; then
-            echo "tasks: Error: 'task' (Taskwarrior) executable not found in PATH." >&2
-            exit 1
-        fi
-        exec task "$@"
+        echo "specs: Notice: Taskwarrior has been phased out in favor of in-tree source specifications." >&2
+        echo "       Use 'specs' or 'specs informal' to inspect in-tree specification contracts." >&2
+        exit 0
         ;;
     add)
         shift || true

@@ -4,7 +4,7 @@ High-performance, minimalist Neovim environment designed for distraction-free co
 - **Monochrome Aesthetics**: Pure black and white, zero syntax noise, high-contrast readability.
 - **Tiling & Terminal Multiplexing**: Hyprland-style seamless split management (`Alt+h/j/k/l`, `Alt+q`, `Alt+z`).
 - **Code Graph & Logic Compiler (`:Lgcc`)**: Zero-overhead native Rust AST/symbol graph builder and knapsack context router that bundles target source code with compressed dependency skeletons into a single IR stream for LLM reasoning.
-- **Task Graph & Formal Specs (`:Tasks`)**: In-tree structured task/specification DAG (`TODO` and `SPEC` comments) bridging repository dependencies, Taskwarrior, and LexLean/PrismPM proof verification.
+- **Specification Graph & Formal Proofs (`:Specs`)**: In-tree structured task/specification DAG (`TODO` and `SPEC` comments) bridging repository dependencies, formal Lean 4 theorems, and native `lgcc` proof replay.
 - **Persistent Shell State**: Embedded terminals automatically track directory changes across splits.
 
 ---

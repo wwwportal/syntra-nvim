@@ -40,12 +40,12 @@ local features = {
         dep_hint = "requires: ~/code/agent + opencode + piper",
     },
     {
-        id = "tasks",
-        name = "Unified Taskwarrior & Prover DAG",
-        desc = "In-editor task navigator (:Tasks) bridging project TODOs & Taskwarrior",
+        id = "specs",
+        name = "Source-First Specification DAG (:Specs)",
+        desc = "In-editor specification & task navigator (:Specs) backed by Lean 4 kernel replay",
         enabled = true,
-        check_dep = function() return vim.fn.executable("task") == 1 end,
-        dep_hint = "executable: task (taskwarrior)",
+        check_dep = function() return vim.fn.executable("lgcc") == 1 end,
+        dep_hint = "executable: lgcc (native specification compiler)",
     },
 }
 

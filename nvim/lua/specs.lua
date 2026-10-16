@@ -372,50 +372,7 @@ local function show_repo_tasks(repo_path, origin_win, target_task_id)
   end
 
   vim.api.nvim_echo({
-    { string.format("● Loaded %d in-tree tasks for %s (<CR> to jump in split, o to jump & close, q to close)", #tasks, repo_name), "ModeMsg" }
-  }, false, {})
-end
-
---- Show global Taskwarrior tasks
-local function show_taskwarrior(origin_win)
-  if vim.fn.executable("task") ~= 1 then
-    vim.notify("tasks: 'task' (Taskwarrior) executable not found in PATH", vim.log.levels.ERROR)
-    return
-  end
-
-  local out = vim.fn.system({ "task", "rc.verbose=nothing", "rc.color=off", "rc.json.array=on", "status:pending", "export" })
-  if vim.v.shell_error ~= 0 or out == "" then
-    vim.notify("tasks: No pending Taskwarrior tasks found", vim.log.levels.INFO)
-    return
-  end
-
-  local ok, tasks = pcall(vim.fn.json_decode, out)
-  if not ok or type(tasks) ~= "table" then
-    vim.notify("tasks: Could not parse Taskwarrior output", vim.log.levels.ERROR)
-    return
-  end
-
-  -- Sort by urgency descending
-  table.sort(tasks, function(a, b)
-    return (a.urgency or 0) > (b.urgency or 0)
-  end)
-
-  local qf = {}
-  for _, t in ipairs(tasks) do
-    local project = t.project and ("[" .. t.project .. "] ") or ""
-    local urg = t.urgency and string.format("(Urg: %.2f) ", t.urgency) or ""
-    table.insert(qf, {
-      text = string.format("#%-2d %s%s%s", t.id or 0, project, urg, t.description or "No description"),
-      type = (t.urgency and t.urgency > 5) and "E" or ((t.urgency and t.urgency > 2) and "W" or "I"),
-    })
-  end
-
-  vim.fn.setqflist(qf, "r")
-  vim.fn.setqflist({}, "a", { title = string.format("Taskwarrior Tasks (%d pending)", #tasks) })
-  vim.cmd("botright copen 12")
-  setup_qf_keymaps(origin_win)
-  vim.api.nvim_echo({
-    { string.format("● Loaded %d Taskwarrior tasks (q to close)", #tasks), "ModeMsg" }
+    { string.format("● Loaded %d in-tree specifications for %s (<CR> to jump in split, o to jump & close, q to close)", #tasks, repo_name), "ModeMsg" }
   }, false, {})
 end
 
@@ -1050,8 +1007,8 @@ function M.fix_tasks(origin_win)
   end
 end
 
---- Main entry point for :Tasks command
---- @param args? string "prover" | "syntra" | "syntra-nvim" | "tw" | "taskwarrior" | "add ..." | "fix" | nil
+--- Main entry point for :Specs (and :Tasks) command
+--- @param args? string "prover" | "syn" | "syn-nvim" | "add ..." | "fix" | nil
 function M.tasks(args)
   local origin_win = vim.api.nvim_get_current_win()
   args = args and vim.trim(args) or ""
@@ -1069,30 +1026,29 @@ function M.tasks(args)
 
   local target = args:lower()
   if target == "tw" or target == "taskwarrior" then
-    show_taskwarrior(origin_win)
+    vim.notify("specs: Taskwarrior has been phased out in favor of in-tree source specifications (:Specs).", vim.log.levels.WARN)
     return
   end
 
-  local lint_script = find_lint_tasks(target ~= "" and target or nil)
-  if lint_script then
-    show_repo_tasks(lint_script, origin_win)
-  elseif target == "prover" or target == "syntra" or target == "syntra-nvim" then
-    vim.notify(string.format("tasks: Could not find %s's lint_tasks.py script", target), vim.log.levels.ERROR)
+  local repo_dir = find_lint_tasks(target ~= "" and target or nil)
+  if repo_dir then
+    show_repo_tasks(repo_dir, origin_win)
   else
-    show_taskwarrior(origin_win)
+    -- Fallback: scan current working directory directly
+    show_repo_tasks(vim.fn.getcwd(), origin_win)
   end
 end
 
 local function task_complete(arglead, cmdline)
   local parts = vim.split(vim.trim(cmdline), "%s+")
   if #parts == 2 and not cmdline:match("%s$") then
-    local subcmds = { "add", "fix", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
+    local subcmds = { "add", "fix", "prover", "syn", "syn-nvim" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
   elseif (#parts == 2 and cmdline:match("%s$") and parts[2] == "add") or (#parts == 3 and parts[2] == "add") then
     local add_prefixes = { "TODO:", "FIXME:", "SPEC:", "spec" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, add_prefixes)
   end
-  local subcmds = { "add", "fix", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
+  local subcmds = { "add", "fix", "prover", "syn", "syn-nvim" }
   return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
 end
 
@@ -1102,7 +1058,7 @@ vim.api.nvim_create_user_command("Specs", function(ctx)
 end, {
   nargs = "*",
   complete = task_complete,
-  desc = "Navigate project specification DAG, Taskwarrior, or add tasks",
+  desc = "Navigate in-tree project specification DAG or scaffold contracts",
 })
 
 vim.api.nvim_create_user_command("Spec", function(ctx)
@@ -1110,7 +1066,7 @@ vim.api.nvim_create_user_command("Spec", function(ctx)
 end, {
   nargs = "*",
   complete = task_complete,
-  desc = "Navigate project specification DAG, Taskwarrior, or add tasks",
+  desc = "Navigate in-tree project specification DAG or scaffold contracts",
 })
 
 vim.api.nvim_create_user_command("Tasks", function(ctx)
@@ -1118,7 +1074,7 @@ vim.api.nvim_create_user_command("Tasks", function(ctx)
 end, {
   nargs = "*",
   complete = task_complete,
-  desc = "Navigate project specification DAG, Taskwarrior, or add tasks (alias to :Specs)",
+  desc = "Navigate in-tree project specification DAG (alias to :Specs)",
 })
 
 vim.api.nvim_create_user_command("Task", function(ctx)
@@ -1126,11 +1082,11 @@ vim.api.nvim_create_user_command("Task", function(ctx)
 end, {
   nargs = "*",
   complete = task_complete,
-  desc = "Navigate project specification DAG, Taskwarrior, or add tasks (alias to :Specs)",
+  desc = "Navigate in-tree project specification DAG (alias to :Specs)",
 })
 
 vim.api.nvim_create_user_command("Taskwarrior", function()
-  M.tasks("tw")
-end, { desc = "View pending Taskwarrior tasks in bottom split" })
+  vim.notify("specs: Taskwarrior has been phased out in favor of in-tree source specifications (:Specs).", vim.log.levels.WARN)
+end, { desc = "Deprecated: Taskwarrior phased out in favor of :Specs" })
 
 return M

@@ -642,7 +642,7 @@ vim.keymap.set("n", "ZQ", function() smart_quit({ force = true }) end, { desc = 
 -- ── LSP ──
 require("lsp")
 
--- ── Specification Navigator (Specs DAG & Taskwarrior) ──
+-- ── Specification Navigator (:Specs) ──
 require("specs")
 
 -- ── First-Time Feature Checklist & Onboarding ──
