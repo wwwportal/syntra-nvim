@@ -13,6 +13,20 @@ local active_job = nil
 local ticker_timer = nil
 local ns_lgcc = vim.api.nvim_create_namespace("lgcc_diagnostics")
 
+-- Configure ns_lgcc diagnostics: completely disable underlines and default virtual text
+vim.diagnostic.config({
+  signs = true,
+  underline = false,
+  virtual_text = false,
+  virtual_lines = false,
+}, ns_lgcc)
+
+-- Disable diagnostic underlines globally across all buffers and colorschemes
+vim.api.nvim_set_hl(0, "DiagnosticUnderlineError", { underline = false, undercurl = false, sp = "NONE" })
+vim.api.nvim_set_hl(0, "DiagnosticUnderlineWarn", { underline = false, undercurl = false, sp = "NONE" })
+vim.api.nvim_set_hl(0, "DiagnosticUnderlineInfo", { underline = false, undercurl = false, sp = "NONE" })
+vim.api.nvim_set_hl(0, "DiagnosticUnderlineHint", { underline = false, undercurl = false, sp = "NONE" })
+
 -- Setup custom highlight groups
 vim.api.nvim_set_hl(0, "LgccStreamGray", { fg = "#7e8294", italic = true, default = true })
 vim.api.nvim_set_hl(0, "LgccSpinner", { fg = "#7aa2f7", bold = true, default = true })
@@ -473,9 +487,10 @@ If there are no logic errors, output: CLEAN]]
             vim.cmd("botright copen 8")
           end
 
-          vim.api.nvim_echo({
-            { string.format("● [lgcc:%s] %d logical error(s) flagged in-line in red (navigate with ]d / [d)", engine_name, #qf_items), "DiagnosticError" },
-          }, true, {})
+          -- Auto-refresh editor screen immediately without prompting for any keypress
+          local summary_msg = string.format("● [lgcc:%s] %d error(s)", engine_name, #qf_items)
+          vim.api.nvim_echo({ { summary_msg, "DiagnosticError" } }, false, {})
+          vim.cmd("redraw")
 
           if opts.speak then
             local summary = string.format("Logical compiler found %d error%s in %s. First error at line %d: %s",
@@ -485,9 +500,9 @@ If there are no logic errors, output: CLEAN]]
         else
           pcall(vim.cmd, "cclose")
           vim.fn.setqflist({}, "r")
-          vim.api.nvim_echo({
-            { string.format("✓ [lgcc:%s] clean (no logical errors found in %s)", engine_name, file_basename), "DiagnosticOk" },
-          }, true, {})
+          local clean_msg = string.format("✓ [lgcc:%s] clean", engine_name)
+          vim.api.nvim_echo({ { clean_msg, "DiagnosticOk" } }, false, {})
+          vim.cmd("redraw")
 
           if opts.speak then
             speak_summary("Logical compiler check clean. No logical errors found in " .. file_basename)
