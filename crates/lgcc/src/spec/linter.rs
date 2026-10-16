@@ -16,6 +16,14 @@ use walkdir::WalkDir;
 // [lexlean:theorems]
 // {"kind":"theorem","name":"lgcc_native_linter_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_native_linter"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
+// SPEC(spec-golden-acceptance-vectors | tier:B | depends_on:[spec-cli-wire-protocol-dispatch] | blocks:[spec-knapsack-budget-theorems]): Define acceptance vector suite verifying deterministic byte outputs.
+// Description: Define serialized AcceptanceVector schema modeling hex-encoded CLI request and response byte expectations to guard against silent output format regressions.
+// Criterion: assert: "All acceptance test vectors replay against lgcc with 100% byte integrity"
+// [lexlean:declarations]
+// {"fields":[{"name":"commandVerb","type":{"kind":"string"}},{"name":"requestBytesHex","type":{"kind":"string"}},{"name":"expectedResponseHex","type":{"kind":"string"}}],"kind":"structure","name":"CliAcceptanceVector","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"cli_wire_protocol_dispatch"},"kind":"call"},"kind":"definition","name":"golden_acceptance_vectors","parameters":[],"result":{"kind":"bool"}}
+// [lexlean:theorems]
+// {"kind":"theorem","name":"golden_acceptance_vectors_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"golden_acceptance_vectors"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRecord {
     pub id: String,

@@ -55,13 +55,29 @@
 
 
 
--- SPEC(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks]): Package and version syntra-nvim Debian release with verified task DAG.
+-- SPEC(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks] | blocks:[spec-syntra-application-manifest]): Package and version syntra-nvim Debian release with verified task DAG.
 -- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.
 -- Criterion: review: "dpkg-deb -I syntra-nvim_1.0.0_all.deb succeeds and apt repository index matches"
 -- [lexlean:declarations]
 -- {"body":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"kind":"definition","name":"syntra_plugin_bundle","parameters":[],"result":{"kind":"bool"}}
 -- [lexlean:theorems]
 -- {"kind":"theorem","name":"syntra_plugin_bundle_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+
+-- SPEC(spec-syntra-application-manifest | tier:B | depends_on:[syntra-plugin-bundle] | blocks:[spec-syntra-view-model]): Formalize SyntraApplication manifest specifying package metadata, token quotas, and APT targets.
+-- Description: Define formal SyntraApplication inductive structure modeling cargo manifest properties, guest token quotas, APT distribution roots, and core wasm contracts.
+-- Criterion: assert: "SyntraApplication manifest passes prismpm check with zero schema errors"
+-- [lexlean:declarations]
+-- {"constructors":[{"fields":[],"name":"AptRepository"},{"fields":[],"name":"NeovimPlugin"}],"kind":"inductive","name":"DistributionTarget","parameters":[],"type_parameters":[]},{"fields":[{"name":"name","type":{"kind":"string"}},{"name":"version","type":{"kind":"string"}},{"name":"maxTokenBudget","type":{"kind":"nat"}},{"name":"target","type":{"arguments":[],"kind":"named","member":{"name":"DistributionTarget"}}}],"kind":"structure","name":"SyntraApplication","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"kind":"definition","name":"syntra_application_manifest","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"syntra_application_manifest_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_application_manifest"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+
+-- SPEC(spec-syntra-view-model | tier:B | depends_on:[spec-syntra-application-manifest] | blocks:[spec-cli-wire-protocol-dispatch]): Formalize SyntraView and TaskAgendaView modeling Neovim presentation and keybindings.
+-- Description: Model Neovim UI presentation parameters: split window layout, jumpable buffer options, agenda filter modes, and interactive key actions (<CR>, d, a, q).
+-- Criterion: assert: "SyntraView and TaskAgendaView inductive structures pass Lean 4 kernel verification"
+-- [lexlean:declarations]
+-- {"constructors":[{"fields":[],"name":"JumpToSource"},{"fields":[],"name":"MarkCompleted"},{"fields":[],"name":"FilterByTier"},{"fields":[],"name":"QuitView"}],"kind":"inductive","name":"AgendaAction","parameters":[],"type_parameters":[]},{"fields":[{"name":"title","type":{"kind":"string"}},{"name":"splitDirection","type":{"kind":"string"}},{"name":"splitWidth","type":{"kind":"nat"}},{"name":"defaultAction","type":{"arguments":[],"kind":"named","member":{"name":"AgendaAction"}}}],"kind":"structure","name":"TaskAgendaView","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"syntra_application_manifest"},"kind":"call"},"kind":"definition","name":"syntra_view_model","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"syntra_view_model_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_view_model"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 local M = {}
 
