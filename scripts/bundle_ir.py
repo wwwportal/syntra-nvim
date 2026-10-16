@@ -34,10 +34,6 @@ def estimate_tokens(text: str) -> int:
 # Python AST Extractor & Skeletonizer
 # ==============================================================================
 
-# TODO(ir-ast-extractor | tier:A | blocks:[ir-contract-skeletonizer]): Extract symbols, declarations, and import edges from Python and Lua ASTs.
-# Description: Implement AST traversal using Python ast and Lua Tree-sitter to parse source files into structured declaration lists and import edges.
-# Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
-
 class PyCallCollector(ast.NodeVisitor):
     def __init__(self):
         self.calls = set()
@@ -139,10 +135,6 @@ def extract_python(filepath: Path) -> Dict[str, Any]:
         "symbols": symbols,
     }
 
-
-# TODO(ir-contract-skeletonizer | tier:A | depends_on:[ir-ast-extractor] | blocks:[lgcc-dep-bundle]): Skeletonize implementation bodies while preserving signatures and invariants.
-# Description: Replace function and method bodies with stubs while retaining complete type annotations, docstring invariants, and interface definitions.
-# Criterion: review: "Skeletonizer achieves >70% character and token reduction on target modules while preserving all exported signatures"
 
 class PySkeletonizer(ast.NodeTransformer):
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST:
@@ -387,10 +379,6 @@ def locate_local_dependency(mod_name: str, base_dir: Path) -> Optional[Path]:
     return None
 
 
-# TODO(lgcc-dep-bundle | tier:A | depends_on:[ir-contract-skeletonizer] | blocks:[lgcc-task-synthesizer, graph-repo-scanner]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
-# Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
-# Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
-
 def bundle_dependencies(target_path: Path) -> str:
     """Preprocess target file and its local dependencies into a hermetic bundle."""
     target_path = target_path.resolve()
@@ -431,55 +419,6 @@ def bundle_dependencies(target_path: Path) -> str:
             bundle.append("--- END CONTRACT ---\n")
 
     return "\n".join(bundle)
-
-
-# ==============================================================================
-# Repository Symbol Graph & Context Router Pipeline
-# ==============================================================================
-
-# TODO(graph-repo-scanner | tier:A | depends_on:[lgcc-dep-bundle] | blocks:[graph-symbol-table]): Discover and index repository source files respecting .gitignore.
-# Description: Implement repository-wide source file scanner discovering all Python and Lua files while filtering test/build/vendor noise.
-# Criterion: review: "scripts/bundle_ir.py --scan-repo returns complete list of tracked source files"
-
-# TODO(graph-symbol-table | tier:B | depends_on:[graph-repo-scanner] | blocks:[graph-edge-extractor]): Construct global symbol table mapping fully-qualified names to signatures and locations.
-# Description: Build repository symbol table V mapping module.Class.method and module.func FQNs to file locations, line ranges, and signatures.
-# Criterion: review: "Symbol table indexes all top-level classes, methods, and functions with unique FQNs"
-
-# TODO(graph-edge-extractor | tier:B | depends_on:[graph-symbol-table] | blocks:[ir-graph-builder]): Extract cross-file call-graph and type-reference dependency edges.
-# Description: Resolve AST call sites and type annotations against the global symbol table to generate directed dependency edges E.
-# Criterion: review: "Extracted graph contains verified caller->callee edges across different modules"
-
-# TODO(ir-graph-builder | tier:B | depends_on:[graph-edge-extractor] | blocks:[router-distance-decay]): Construct global multi-file repository symbol dependency graph.
-# Description: Assemble and serialize global repository symbol DAG G=(V, E) into compact adjacency representation.
-# Criterion: review: "scripts/bundle_ir.py --graph returns full repository symbol DAG with verified node and edge counts"
-
-# TODO(router-distance-decay | tier:B | depends_on:[ir-graph-builder] | blocks:[router-personalized-pagerank]): Compute directed shortest-path distance decay weights from target symbols.
-# Description: Calculate directed graph distances d(u, v) from target symbols and apply exponential/harmonic distance decay weighting.
-# Criterion: review: "Distance decay assigns strictly decreasing weights to k-hop neighborhood nodes"
-
-# TODO(router-personalized-pagerank | tier:B | depends_on:[router-distance-decay] | blocks:[router-topological-pruner]): Compute Personalized PageRank centrality rooted at target symbols.
-# Description: Run power-iteration Personalized PageRank with random walk restart rooted at target symbols to score structural centrality.
-# Criterion: review: "PPR converges in <=30 iterations and ranks shared utility and interface hubs higher than leaf stubs"
-
-# TODO(router-topological-pruner | tier:B | depends_on:[router-personalized-pagerank] | blocks:[router-knapsack-solver]): Compute composite importance weighting on symbol graph.
-# Description: Synthesize composite node importance scores S(v|q) combining PPR centrality and distance decay, pruning zero-relevance subgraphs.
-# Criterion: review: "Router ranks 1-hop and 2-hop dependent symbols higher than unrelated repository symbols"
-
-# TODO(router-knapsack-solver | tier:B | depends_on:[router-topological-pruner] | blocks:[router-connectivity-guard]): Solve 0/1 knapsack optimization selecting symbols under token budget.
-# Description: Formulate and solve knapsack optimization selecting symbol nodes to maximize total relevance score under active context token budget.
-# Criterion: review: "Greedy/DP knapsack selector terminates in <50ms and satisfies sum(token_cost) <= budget"
-
-# TODO(router-connectivity-guard | tier:B | depends_on:[router-knapsack-solver] | blocks:[router-budget-knapsack]): Enforce path connectivity invariant on selected symbol subgraph.
-# Description: Ensure all selected symbols retain valid import/call paths to target symbols to prevent disconnected orphan hallucinations.
-# Criterion: review: "Allocated context contains zero orphan symbols or unresolvable type references"
-
-# TODO(router-budget-knapsack | tier:B | depends_on:[router-connectivity-guard] | blocks:[ir-schema-formatter]): Implement knapsack context allocator bounded by token budget.
-# Description: Select optimal symbol subgraph maximizing information coverage score while staying strictly within active context token budget.
-# Criterion: review: "Router output token count stays under specified budget while maximizing coverage score"
-
-# TODO(ir-schema-formatter | tier:B | depends_on:[router-budget-knapsack] | blocks:[lgcc-cli-router-hook]): Emit unified compressed context IR schema for model prompt.
-# Description: Format target file, budget-allocated symbol skeletons, and dependency topology into compact prompt intermediate representation.
-# Criterion: review: "Formatted IR stream preserves all type contracts while achieving >70% compression"
 
 
 def show_metrics(filepath: Path) -> None:

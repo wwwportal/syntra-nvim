@@ -30,7 +30,7 @@ LAZY_TODO_RE = re.compile(r'^[ \t]*(?:#|//|--)\s*(TODO|FIXME)(?!\([a-zA-Z0-9_\-]
 CRITERION_RE = re.compile(r'^[ \t]*(?:#|//|--)\s*Criterion:\s*(assert:\s*.+|review:\s*.+)$')
 DESCRIPTION_RE = re.compile(r'^[ \t]*(?:#|//|--)\s*Description:\s*(.+)$')
 
-SCAN_EXTENSIONS = {'.lua', '.sh', '.bash', '.py'}
+SCAN_EXTENSIONS = {'.lua', '.sh', '.bash', '.py', '.cpp', '.hpp', '.h', '.cc', '.cxx'}
 IGNORE_DIRS = {'.git', 'build', 'target', '__pycache__', '.venv', 'venv', 'vendor', '.lazy'}
 
 def scan_tasks() -> Tuple[List[Dict[str, Any]], List[str]]:

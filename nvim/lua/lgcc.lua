@@ -114,7 +114,20 @@ local function parse_diagnostics(raw, filepath)
   return qf_items
 end
 
---- Locate bundle_ir.py script
+--- Locate native lgcc C++ binary
+local function find_lgcc_bin()
+  local candidates = {
+    vim.fn.expand("~/code/syntra-nvim/bin/lgcc"),
+    vim.fn.expand("~/.config/nvim/bin/lgcc"),
+    vim.fn.expand("/usr/local/bin/lgcc"),
+  }
+  for _, p in ipairs(candidates) do
+    if vim.uv.fs_stat(p) then return p end
+  end
+  return nil
+end
+
+--- Locate bundle_ir.py script (fallback)
 local function find_bundle_script()
   local candidates = {
     vim.fn.expand("~/code/syntra-nvim/scripts/bundle_ir.py"),
@@ -155,11 +168,20 @@ function M.lint(opts)
   -- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
   local code_section = ""
   if opts.bundle then
-    local bscript = find_bundle_script()
-    if bscript then
-      local res = vim.system({ "python3", bscript, "--bundle", filepath }, { text = true }):wait()
+    local lgcc_bin = find_lgcc_bin()
+    if lgcc_bin then
+      local res = vim.system({ lgcc_bin, "--bundle", filepath }, { text = true }):wait()
       if res.code == 0 and res.stdout and res.stdout ~= "" then
         code_section = res.stdout
+      end
+    end
+    if code_section == "" then
+      local bscript = find_bundle_script()
+      if bscript then
+        local res = vim.system({ "python3", bscript, "--bundle", filepath }, { text = true }):wait()
+        if res.code == 0 and res.stdout and res.stdout ~= "" then
+          code_section = res.stdout
+        end
       end
     end
   end
