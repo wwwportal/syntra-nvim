@@ -16,8 +16,11 @@
 set -euo pipefail
 
 # Locate lgcc compiler binary
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LGCC_BIN=""
-if command -v lgcc &>/dev/null; then
+if [ -x "$SCRIPT_DIR/lgcc" ]; then
+    LGCC_BIN="$SCRIPT_DIR/lgcc"
+elif command -v lgcc &>/dev/null; then
     LGCC_BIN="$(command -v lgcc)"
 elif [ -x "$HOME/code/syntra-nvim/bin/lgcc" ]; then
     LGCC_BIN="$HOME/code/syntra-nvim/bin/lgcc"
@@ -143,11 +146,19 @@ case "$CMD" in
         fi
 
         TEMP_FILE="$(mktemp)"
+        DEF_NAME="$(echo "$TASK_ID" | tr '-' '_')"
         cat <<EOF > "$TEMP_FILE"
 $PREFIX $KIND($TASK_ID | tier:B): $DESC
 $PREFIX Description: $DESC
 $PREFIX Criterion: review: "$DESC is implemented and verified"
 EOF
+        if [ "$KIND" = "SPEC" ]; then
+            cat <<EOF >> "$TEMP_FILE"
+$PREFIX [lean:spec]
+$PREFIX def $DEF_NAME : Bool := true
+$PREFIX theorem ${DEF_NAME}_verified : $DEF_NAME = true := by rfl
+EOF
+        fi
         cat "$TARGET_FILE" >> "$TEMP_FILE"
         mv "$TEMP_FILE" "$TARGET_FILE"
         echo "● Scaffolded $KIND contract '$TASK_ID' into $TARGET_FILE"

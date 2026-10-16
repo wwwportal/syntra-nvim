@@ -194,10 +194,9 @@ function M.lint(opts)
   -- SPEC(lgcc-compressed-ir | tier:B | depends_on:[lgcc-cli-router-hook] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
   -- Description: Implement a compact AST/interface representation (symbol dependency graph and skeletonized type stubs) to keep full repository context in the model's active window without blowing up token limits.
   -- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
-  -- [lexlean:declarations]
-  -- {"body":{"arguments":[],"function":{"name":"lgcc_cli_router_hook"},"kind":"call"},"kind":"definition","name":"lgcc_compressed_ir","parameters":[],"result":{"kind":"bool"}}
-  -- [lexlean:theorems]
-  -- {"kind":"theorem","name":"lgcc_compressed_ir_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_compressed_ir"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+  -- [lean:spec]
+  -- def lgcc_compressed_ir : Bool := lgcc_cli_router_hook
+  -- theorem lgcc_compressed_ir_verified : lgcc_compressed_ir = true := by rfl
   local code_section = ""
   local used_budget = nil
 
@@ -370,10 +369,9 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
     -- SPEC(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
     -- Description: Integrate bundle_ir.py --route --budget into lgcc.lua with optional --budget argument for dynamic context allocation.
     -- Criterion: review: ":Lgcc --budget 4000 dynamically queries router and passes knapsack-allocated IR context"
-    -- [lexlean:declarations]
-    -- {"body":{"arguments":[],"function":{"name":"ir_schema_formatter"},"kind":"call"},"kind":"definition","name":"lgcc_cli_router_hook","parameters":[],"result":{"kind":"bool"}}
-    -- [lexlean:theorems]
-    -- {"kind":"theorem","name":"lgcc_cli_router_hook_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_cli_router_hook"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+    -- [lean:spec]
+    -- def lgcc_cli_router_hook : Bool := ir_schema_formatter
+    -- theorem lgcc_cli_router_hook_verified : lgcc_cli_router_hook = true := by rfl
     if arg == "-s" or arg == "--speak" or arg == "speak" then
       speak = true
     elseif arg == "-b" or arg == "--bundle" or arg == "bundle" then
@@ -430,9 +428,8 @@ end, {
 -- SPEC(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
 -- Description: Extend lgcc to scan entire directories and multi-file projects using the compressed intermediate representation to detect cross-module invariant violations and systemic flaws.
 -- Criterion: review: "lgcc directory execution passes compressed project context and populates Quickfix with multi-file error locations"
--- [lexlean:declarations]
--- {"body":{"arguments":[],"function":{"name":"lgcc_compressed_ir"},"kind":"call"},"kind":"definition","name":"lgcc_project_scan","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"lgcc_project_scan_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_project_scan"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- [lean:spec]
+-- def lgcc_project_scan : Bool := lgcc_compressed_ir
+-- theorem lgcc_project_scan_verified : lgcc_project_scan = true := by rfl
 
 return M

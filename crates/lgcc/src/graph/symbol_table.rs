@@ -9,18 +9,16 @@ use walkdir::WalkDir;
 // SPEC(graph-repo-scanner | tier:A | depends_on:[lgcc-dep-bundle] | blocks:[graph-symbol-table]): Discover and index repository source files respecting .gitignore.
 // Description: Implement repository-wide source file scanner discovering all Python and Lua files while filtering test/build/vendor noise.
 // Criterion: review: "scripts/bundle_ir.py --scan-repo returns complete list of tracked source files"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"lgcc_dep_bundle"},"kind":"call"},"kind":"definition","name":"graph_repo_scanner","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"graph_repo_scanner_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"graph_repo_scanner"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def graph_repo_scanner : Bool := lgcc_dep_bundle
+// theorem graph_repo_scanner_verified : graph_repo_scanner = true := by rfl
 
 // SPEC(graph-symbol-table | tier:B | depends_on:[graph-repo-scanner] | blocks:[graph-edge-extractor]): Construct global symbol table mapping fully-qualified names to signatures and locations.
 // Description: Build repository symbol table V mapping module.Class.method and module.func FQNs to file locations, line ranges, and signatures.
 // Criterion: review: "Symbol table indexes all top-level classes, methods, and functions with unique FQNs"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"graph_repo_scanner"},"kind":"call"},"kind":"definition","name":"graph_symbol_table","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"graph_symbol_table_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"graph_symbol_table"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def graph_symbol_table : Bool := graph_repo_scanner
+// theorem graph_symbol_table_verified : graph_symbol_table = true := by rfl
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalSymbol {

@@ -10,26 +10,36 @@ use std::path::{Path, PathBuf};
 // SPEC(lgcc-dep-bundle | tier:A | depends_on:[ir-contract-skeletonizer] | blocks:[lgcc-task-synthesizer, graph-repo-scanner]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
 // Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
 // Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"ir_contract_skeletonizer"},"kind":"call"},"kind":"definition","name":"lgcc_dep_bundle","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"lgcc_dep_bundle_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_dep_bundle"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def lgcc_dep_bundle : Bool := ir_contract_skeletonizer
+// theorem lgcc_dep_bundle_verified : lgcc_dep_bundle = true := by rfl
 
 // SPEC(ir-schema-formatter | tier:B | depends_on:[router-budget-knapsack] | blocks:[lgcc-cli-router-hook]): Emit unified compressed context IR schema for model prompt.
 // Description: Format target file, budget-allocated symbol skeletons, and dependency topology into compact prompt intermediate representation.
 // Criterion: review: "Formatted IR stream preserves all type contracts while achieving >70% compression"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"router_budget_knapsack"},"kind":"call"},"kind":"definition","name":"ir_schema_formatter","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"ir_schema_formatter_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"ir_schema_formatter"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def ir_schema_formatter : Bool := router_budget_knapsack
+// theorem ir_schema_formatter_verified : ir_schema_formatter = true := by rfl
 
 // SPEC(spec-cli-wire-protocol-dispatch | tier:B | depends_on:[spec-syntra-view-model] | blocks:[spec-golden-acceptance-vectors]): Formalize CLI argument decoding and command dispatch pipeline.
 // Description: Define structured CommandRequest and CommandResponse schemas in LexLean formalizing CLI verbs (--lint-tasks, --verify-specs, --route, --skeletonize, --extract) with typed option parsing.
 // Criterion: assert: "dispatchLgccCommand cleanly decodes CLI arguments and dispatches to verified handler functions"
-// [lexlean:declarations]
-// {"constructors":[{"fields":[],"name":"LintTasks"},{"fields":[],"name":"VerifySpecs"},{"fields":[],"name":"RouteContext"},{"fields":[],"name":"Skeletonize"},{"fields":[],"name":"ExtractAst"}],"kind":"inductive","name":"LgccCommand","parameters":[],"type_parameters":[]},{"fields":[{"name":"command","type":{"arguments":[],"kind":"named","member":{"name":"LgccCommand"}}},{"name":"targetPath","type":{"kind":"string"}},{"name":"tokenBudget","type":{"kind":"nat"}},{"name":"jsonOutput","type":{"kind":"bool"}}],"kind":"structure","name":"CommandRequest","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"syntra_view_model"},"kind":"call"},"kind":"definition","name":"cli_wire_protocol_dispatch","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"cli_wire_protocol_dispatch_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"cli_wire_protocol_dispatch"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// inductive LgccCommand where
+//   | LintTasks
+//   | VerifySpecs
+//   | RouteContext
+//   | Skeletonize
+//   | ExtractAst
+//
+// structure CommandRequest where
+//   command : LgccCommand
+//   targetPath : String
+//   tokenBudget : Nat
+//   jsonOutput : Bool
+//
+// def cli_wire_protocol_dispatch : Bool := syntra_view_model
+// theorem cli_wire_protocol_dispatch_verified : cli_wire_protocol_dispatch = true := by rfl
 
 fn format_ir_bundle(target_path: &Path, res: &RouteResult) -> String {
     let mut bundle = String::new();
@@ -201,6 +211,9 @@ fn main() {
             std::process::exit(1);
         }
         println!("● Machine-Checked Proof Replay Succeeded!");
+        if res.lean_kernel_verified {
+            println!("  Lean 4 Kernel:    Sound (lean --stdin kernel verification passed)");
+        }
         println!(
             "  Specification Verification (prod_codegen): {} definitions, {} theorems verified",
             res.ffi_defs_verified, res.ffi_theorems_verified

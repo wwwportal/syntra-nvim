@@ -45,7 +45,7 @@ This provisions `~/.config/nvim`, copies `bin/lgcc`, bootstraps `lazy.nvim`, and
 ### 4. Task Graph & Formal Specifications (`:Tasks`)
 * `:Tasks`: Navigates and manages the in-tree **Task Graph** (`crates/lgcc/src/spec/`) built from structured `TODO(...)` and `SPEC(...)` comments (`depends_on` / `blocks`).
 * **Anti-Erasure Linter (`bin/lgcc --lint-tasks`)**: Enforces topological DAG validity, criterion verification, and commit proof logs.
-* **LexLean / PrismPM Proof Replay (`bin/lgcc --verify-specs` / `--emit-c-abi`)**: Stitches distributed `SPEC` blocks in topological order and verifies formal `[lexlean:declarations]` and `[lexlean:theorems]`.
+* **LexLean / PrismPM Proof Replay (`bin/lgcc --verify-specs` / `tasks verify`)**: Stitches distributed `SPEC` blocks in topological order and verifies formal Lean 4 specification declarations and theorems (`[lean:spec]`) via both native `prod_codegen` evaluation and `lean --stdin` kernel replay.
 
 ### 5. Language Server & Diagnostics
 * Buffer hooks for `gd` (definition), `gD` (declaration), `gr` (references), and `K` (hover).

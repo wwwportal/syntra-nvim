@@ -8,46 +8,65 @@ use std::path::{Path, PathBuf};
 // SPEC(ir-ast-extractor | tier:A | blocks:[ir-contract-skeletonizer]): Extract symbols, declarations, and import edges from Python and Lua ASTs.
 // Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
 // Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
-// [lexlean:declarations]
-// {"constructors":[{"fields":[],"name":"TierA"},{"fields":[],"name":"TierB"},{"fields":[],"name":"TierC"}],"kind":"inductive","name":"TaskTier","parameters":[],"type_parameters":[]}
-// {"fields":[{"name":"id","type":{"kind":"string"}},{"name":"tier","type":{"arguments":[],"kind":"named","member":{"name":"TaskTier"}}},{"name":"file","type":{"kind":"string"}},{"name":"line","type":{"kind":"nat"}},{"name":"completed","type":{"kind":"bool"}}],"kind":"structure","name":"TaskRecord","parameters":[],"type_parameters":[]}
-// {"fields":[{"name":"maxTokens","type":{"kind":"nat"}},{"name":"allocatedTokens","type":{"kind":"nat"}},{"name":"remainingTokens","type":{"kind":"nat"}}],"kind":"structure","name":"ContextBudget","parameters":[],"type_parameters":[]}
-// {"fields":[{"name":"name","type":{"kind":"string"}},{"name":"kind","type":{"kind":"string"}},{"name":"file","type":{"kind":"string"}},{"name":"tokenCost","type":{"kind":"nat"}}],"kind":"structure","name":"SymbolNode","parameters":[],"type_parameters":[]}
-// {"body":{"kind":"and","left":{"kind":"ge","left":{"kind":"nat","value":100},"right":{"kind":"nat","value":0}},"right":{"kind":"le","left":{"kind":"nat","value":0},"right":{"kind":"nat","value":100}}},"kind":"definition","name":"ir_ast_extractor","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"ir_ast_extractor_verified","parameters":[],"proof":{"kind":"decide"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"ir_ast_extractor"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// inductive TaskTier where
+//   | TierA
+//   | TierB
+//   | TierC
+//
+// structure TaskRecord where
+//   id : String
+//   tier : TaskTier
+//   file : String
+//   line : Nat
+//   completed : Bool
+//
+// structure ContextBudget where
+//   maxTokens : Nat
+//   allocatedTokens : Nat
+//   remainingTokens : Nat
+//
+// structure SymbolNode where
+//   name : String
+//   kind : String
+//   file : String
+//   tokenCost : Nat
+//
+// def ir_ast_extractor : Bool := 100 >= 0 && 0 <= 100
+// theorem ir_ast_extractor_verified : ir_ast_extractor = true := by decide
 
 // SPEC(lgcc-spec-scanner | tier:B | depends_on:[tasks-lexlean-invariant-synthesis] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
 // Description: Implement in-line specification patch scanner in native Rust extracting distributed LexLean fragments and dependency tags across all source files.
 // Criterion: assert: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
-// [lexlean:declarations]
-// {"constructors":[{"fields":[],"name":"TierA"},{"fields":[],"name":"TierB"},{"fields":[],"name":"TierC"}],"kind":"inductive","name":"Tier","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"tasks_lexlean_invariant_synthesis"},"kind":"call"},"kind":"definition","name":"lgcc_spec_scanner","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"lgcc_spec_scanner_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_spec_scanner"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// inductive Tier where
+//   | TierA
+//   | TierB
+//   | TierC
+//
+// def lgcc_spec_scanner : Bool := tasks_lexlean_invariant_synthesis
+// theorem lgcc_spec_scanner_verified : lgcc_spec_scanner = true := by rfl
 
 // SPEC(prismpm-jit-verifier | tier:B | depends_on:[lgcc-topo-spec-stitcher] | blocks:[prismpm-rust-bridge]): Execute Just-In-Time formal verification of stitched LexLean specifications.
 // Description: Hook lgcc JIT-stitched .lex.tex specification into prismpm check and lexlean verify to execute machine-checked proof replay before commit and build.
 // Criterion: assert: "Running lgcc --verify-specs compiles stitched specification and validates all Lean 4 theorems with zero unproven obligations"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"lgcc_topo_spec_stitcher"},"kind":"call"},"kind":"definition","name":"prismpm_jit_verifier","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"prismpm_jit_verifier_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def prismpm_jit_verifier : Bool := lgcc_topo_spec_stitcher
+// theorem prismpm_jit_verifier_verified : prismpm_jit_verifier = true := by rfl
 
 // SPEC(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Integrate prismpm-generated Rust verification module into lgcc.
 // Description: Consume verified Rust crates emitted by prismpm directly into lgcc to expose contract verification functions and invariants directly to the Rust engine without FFI boundaries.
 // Criterion: assert: "cargo build produces native binary linking cleanly into spec test runner"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"kind":"definition","name":"prismpm_rust_bridge","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"prismpm_rust_bridge_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"prismpm_rust_bridge"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def prismpm_rust_bridge : Bool := prismpm_jit_verifier
+// theorem prismpm_rust_bridge_verified : prismpm_rust_bridge = true := by rfl
 
 // SPEC(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-rust-bridge]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
 // Description: Connect lgcc AST extractor and IR compiler with native Rust verification modules to validate formal contracts and invariants at compile and lint time.
 // Criterion: assert: "lgcc validates LexLean-extracted contract assertions during static analysis passes"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"prismpm_rust_bridge"},"kind":"call"},"kind":"definition","name":"lgcc_lexlean_verifier","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"lgcc_lexlean_verifier_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_lexlean_verifier"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def lgcc_lexlean_verifier : Bool := prismpm_rust_bridge
+// theorem lgcc_lexlean_verifier_verified : lgcc_lexlean_verifier = true := by rfl
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractedModule {

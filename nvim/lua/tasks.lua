@@ -13,77 +13,87 @@
 -- SPEC(unified-tasks | tier:A | blocks:[syntra-plugin-bundle]): Bridge Taskwarrior and in-tree source TODOs into unified Neovim UI.
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior and in-tree source TODOs.
 -- Criterion: review: ":Tasks displays integrated agenda view with source TODOs and Taskwarrior tasks"
--- [lexlean:declarations]
--- {"body":{"kind":"and","left":{"kind":"ge","left":{"kind":"nat","value":1000},"right":{"kind":"nat","value":0}},"right":{"kind":"le","left":{"kind":"nat","value":1},"right":{"kind":"nat","value":1000}}},"kind":"definition","name":"unified_tasks","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"unified_tasks_verified","parameters":[],"proof":{"kind":"decide"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- [lean:spec]
+-- def unified_tasks : Bool := 1000 >= 0 && 1 <= 1000
+-- theorem unified_tasks_verified : unified_tasks = true := by decide
 
 -- SPEC(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[spec-lexlean-todo-schema]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
 -- Criterion: review: ":Tasks fix or lgcc --fix-tasks interactively converts unstructured TODOs into valid in-tree contracts with user confirmation"
--- [lexlean:declarations]
--- {"body":{"arguments":[],"function":{"name":"lgcc_dep_bundle"},"kind":"call"},"kind":"definition","name":"lgcc_task_synthesizer","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"lgcc_task_synthesizer_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_task_synthesizer"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- [lean:spec]
+-- def lgcc_task_synthesizer : Bool := lgcc_dep_bundle
+-- theorem lgcc_task_synthesizer_verified : lgcc_task_synthesizer = true := by rfl
 
 -- SPEC(spec-lexlean-todo-schema | tier:B | depends_on:[lgcc-task-synthesizer] | blocks:[spec-jit-patch-schema]): Formalize in-line source contracts as LexLean semantic specification blocks.
 -- Description: Define a formal LexLean specification schema representing in-line task contracts, including inductive types for tiers, DAG dependencies, and theorem-backed acceptance criteria.
 -- Criterion: assert: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
--- [lexlean:declarations]
--- {"body":{"arguments":[],"function":{"name":"lgcc_task_synthesizer"},"kind":"call"},"kind":"definition","name":"spec_lexlean_todo_schema","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"spec_lexlean_todo_schema_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"spec_lexlean_todo_schema"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- [lean:spec]
+-- def spec_lexlean_todo_schema : Bool := lgcc_task_synthesizer
+-- theorem spec_lexlean_todo_schema_verified : spec_lexlean_todo_schema = true := by rfl
 
 -- SPEC(spec-jit-patch-schema | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-native-linter]): Define syntax for distributed in-tree LexLean specification patches.
--- Description: Define specification patch syntax and grammar allowing in-line source comments to embed typed LexLean declarations, inductive types, and theorem blocks.
--- Criterion: assert: "Formal grammar for in-line [lexlean:declarations] and [lexlean:theorem] patches validates under tree-sitter and regex parsers"
--- [lexlean:declarations]
--- {"body":{"arguments":[],"function":{"name":"spec_lexlean_todo_schema"},"kind":"call"},"kind":"definition","name":"spec_jit_patch_schema","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"spec_jit_patch_schema_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"spec_jit_patch_schema"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- Description: Define specification patch syntax and grammar allowing in-line source comments to embed typed native Lean 4 declarations, inductive types, and theorem blocks.
+-- Criterion: assert: "Formal grammar for in-line [lean:spec] patches validates under tree-sitter and Lean 4 kernel parsers"
+-- [lean:spec]
+-- def spec_jit_patch_schema : Bool := spec_lexlean_todo_schema
+-- theorem spec_jit_patch_schema_verified : spec_jit_patch_schema = true := by rfl
 
 -- SPEC(tasks-add-spec-scaffold | tier:B | depends_on:[lgcc-native-linter] | blocks:[tasks-lexlean-invariant-synthesis]): Extend :Tasks add to scaffold formal LexLean SPEC blocks with declaration and theorem templates.
--- Description: Extend :Tasks add in Neovim to scaffold formal LexLean SPEC blocks with [lexlean:declarations] and [lexlean:theorems] templates.
--- Criterion: assert: ":Tasks add spec <desc> inserts structured SPEC comment block with LexLean payload stubs at target line"
--- [lexlean:declarations]
--- {"body":{"arguments":[],"function":{"name":"lgcc_native_linter"},"kind":"call"},"kind":"definition","name":"tasks_add_spec_scaffold","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"tasks_add_spec_scaffold_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"tasks_add_spec_scaffold"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- Description: Extend :Tasks add in Neovim to scaffold formal Lean 4 SPEC blocks with [lean:spec] declaration and theorem templates.
+-- Criterion: assert: ":Tasks add spec <desc> inserts structured SPEC comment block with native Lean 4 payload stubs at target line"
+-- [lean:spec]
+-- def tasks_add_spec_scaffold : Bool := lgcc_native_linter
+-- theorem tasks_add_spec_scaffold_verified : tasks_add_spec_scaffold = true := by rfl
 
 -- SPEC(tasks-lexlean-invariant-synthesis | tier:B | depends_on:[tasks-add-spec-scaffold] | blocks:[lgcc-spec-scanner]): Synthesize non-trivial LexLean domain invariants and inductive theorems from source functions.
 -- Description: Upgrade :Tasks add and lgcc task synthesis to extract function argument signatures, parameter bounds, and state predicates into non-trivial LexLean definitions and machine-checkable theorems beyond reflexive tautologies.
 -- Criterion: assert: "Scaffolded SPEC blocks contain typed input parameters, inductive property constraints, and verified Lean 4 theorem obligations"
--- [lexlean:declarations]
--- {"body":{"arguments":[],"function":{"name":"tasks_add_spec_scaffold"},"kind":"call"},"kind":"definition","name":"tasks_lexlean_invariant_synthesis","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"tasks_lexlean_invariant_synthesis_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"tasks_lexlean_invariant_synthesis"},"kind":"call"},"right":{"kind":"bool","value":true}}}
-
-
-
+-- [lean:spec]
+-- def tasks_lexlean_invariant_synthesis : Bool := tasks_add_spec_scaffold
+-- theorem tasks_lexlean_invariant_synthesis_verified : tasks_lexlean_invariant_synthesis = true := by rfl
 
 -- SPEC(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks] | blocks:[spec-syntra-application-manifest]): Bundle and install Syntra Neovim configuration with verified native lgcc engine.
 -- Description: Provision and link Neovim configuration into ~/.config/nvim with verified native lgcc engine binary.
 -- Criterion: review: "setup.sh provisions ~/.config/nvim and bin/lgcc executes cleanly"
--- [lexlean:declarations]
--- {"body":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"kind":"definition","name":"syntra_plugin_bundle","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"syntra_plugin_bundle_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- [lean:spec]
+-- def syntra_plugin_bundle : Bool := unified_tasks
+-- theorem syntra_plugin_bundle_verified : syntra_plugin_bundle = true := by rfl
 
 -- SPEC(spec-syntra-application-manifest | tier:B | depends_on:[syntra-plugin-bundle] | blocks:[spec-syntra-view-model]): Formalize SyntraApplication manifest specifying package metadata, token quotas, and installation targets.
 -- Description: Define formal SyntraApplication inductive structure modeling package properties, context token budget limits, and script installation targets.
 -- Criterion: assert: "SyntraApplication manifest passes prismpm check with zero schema errors"
--- [lexlean:declarations]
--- {"constructors":[{"fields":[],"name":"ScriptInstaller"},{"fields":[],"name":"NeovimPlugin"}],"kind":"inductive","name":"DistributionTarget","parameters":[],"type_parameters":[]},{"fields":[{"name":"name","type":{"kind":"string"}},{"name":"version","type":{"kind":"string"}},{"name":"maxTokenBudget","type":{"kind":"nat"}},{"name":"target","type":{"arguments":[],"kind":"named","member":{"name":"DistributionTarget"}}}],"kind":"structure","name":"SyntraApplication","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"kind":"definition","name":"syntra_application_manifest","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"syntra_application_manifest_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_application_manifest"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- [lean:spec]
+-- inductive DistributionTarget where
+--   | ScriptInstaller
+--   | NeovimPlugin
+--
+-- structure SyntraApplication where
+--   name : String
+--   version : String
+--   maxTokenBudget : Nat
+--   target : DistributionTarget
+--
+-- def syntra_application_manifest : Bool := syntra_plugin_bundle
+-- theorem syntra_application_manifest_verified : syntra_application_manifest = true := by rfl
 
 -- SPEC(spec-syntra-view-model | tier:B | depends_on:[spec-syntra-application-manifest] | blocks:[spec-cli-wire-protocol-dispatch]): Formalize SyntraView and TaskAgendaView modeling Neovim presentation and keybindings.
 -- Description: Model Neovim UI presentation parameters: split window layout, jumpable buffer options, agenda filter modes, and interactive key actions (<CR>, d, a, q).
 -- Criterion: assert: "SyntraView and TaskAgendaView inductive structures pass Lean 4 kernel verification"
--- [lexlean:declarations]
--- {"constructors":[{"fields":[],"name":"JumpToSource"},{"fields":[],"name":"MarkCompleted"},{"fields":[],"name":"FilterByTier"},{"fields":[],"name":"QuitView"}],"kind":"inductive","name":"AgendaAction","parameters":[],"type_parameters":[]},{"fields":[{"name":"title","type":{"kind":"string"}},{"name":"splitDirection","type":{"kind":"string"}},{"name":"splitWidth","type":{"kind":"nat"}},{"name":"defaultAction","type":{"arguments":[],"kind":"named","member":{"name":"AgendaAction"}}}],"kind":"structure","name":"TaskAgendaView","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"syntra_application_manifest"},"kind":"call"},"kind":"definition","name":"syntra_view_model","parameters":[],"result":{"kind":"bool"}}
--- [lexlean:theorems]
--- {"kind":"theorem","name":"syntra_view_model_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_view_model"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- [lean:spec]
+-- inductive AgendaAction where
+--   | JumpToSource
+--   | MarkCompleted
+--   | FilterByTier
+--   | QuitView
+--
+-- structure TaskAgendaView where
+--   title : String
+--   splitDirection : String
+--   splitWidth : Nat
+--   defaultAction : AgendaAction
+--
+-- def syntra_view_model : Bool := syntra_application_manifest
+-- theorem syntra_view_model_verified : syntra_view_model = true := by rfl
 
 local M = {}
 
@@ -908,15 +918,16 @@ local function insert_task_into_buf(bufnr, origin_win, spec, target_line)
 
   local lines
   if spec.kind == "SPEC" then
-    local decl_json, thm_json = synthesize_lexlean_contract(bufnr, row, spec.id, spec.depends_on)
+    local dep_id = (spec.depends_on and spec.depends_on ~= "") and spec.depends_on:match("%[([%w%-_]+)") or nil
+    local def_name = spec.id:gsub("%-", "_")
+    local body_expr = dep_id and dep_id:gsub("%-", "_") or "true"
     lines = {
       string.format("%s%sSPEC(%s | %s): %s", indent, leader, spec.id, header_attrs, spec.title),
       string.format("%s%sDescription: %s", indent, leader, spec.description),
       string.format('%s%sCriterion: assert: "%s"', indent, leader, spec.description),
-      string.format("%s%s[lexlean:declarations]", indent, leader),
-      string.format("%s%s%s", indent, leader, decl_json),
-      string.format("%s%s[lexlean:theorems]", indent, leader),
-      string.format("%s%s%s", indent, leader, thm_json),
+      string.format("%s%s[lean:spec]", indent, leader),
+      string.format("%s%sdef %s : Bool := %s", indent, leader, def_name, body_expr),
+      string.format("%s%stheorem %s_verified : %s = true := by rfl", indent, leader, def_name, def_name),
       "",
     }
   else

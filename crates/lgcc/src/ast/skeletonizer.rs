@@ -6,10 +6,9 @@ use std::path::Path;
 // SPEC(ir-contract-skeletonizer | tier:A | depends_on:[ir-ast-extractor] | blocks:[lgcc-dep-bundle]): Skeletonize implementation bodies while preserving signatures and invariants.
 // Description: Replace function and method bodies with stubs while retaining complete type annotations, docstring invariants, and interface definitions.
 // Criterion: review: "Skeletonizer achieves >70% character and token reduction on target modules while preserving all exported signatures"
-// [lexlean:declarations]
-// {"body":{"arguments":[],"function":{"name":"ir_ast_extractor"},"kind":"call"},"kind":"definition","name":"ir_contract_skeletonizer","parameters":[],"result":{"kind":"bool"}}
-// [lexlean:theorems]
-// {"kind":"theorem","name":"ir_contract_skeletonizer_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"ir_contract_skeletonizer"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// [lean:spec]
+// def ir_contract_skeletonizer : Bool := ir_ast_extractor
+// theorem ir_contract_skeletonizer_verified : ir_contract_skeletonizer = true := by rfl
 
 #[derive(Debug, Clone, Default)]
 pub struct SkeletonMetrics {
