@@ -8,7 +8,15 @@ namespace lgcc {
 // Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
 // Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
 
-// TODO(prismpm-rust-bridge | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
+// TODO(lgcc-spec-scanner | tier:B | depends_on:[spec-jit-patch-schema] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
+// Description: Implement in-line specification patch scanner in lgcc C++ extracting distributed LexLean fragments and dependency tags across all source files.
+// Criterion: review: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
+
+// TODO(prismpm-jit-verifier | tier:B | depends_on:[lgcc-topo-spec-stitcher] | blocks:[prismpm-rust-bridge]): Execute Just-In-Time formal verification of stitched LexLean specifications.
+// Description: Hook lgcc JIT-stitched .lex.tex specification into prismpm check and lexlean verify to execute machine-checked proof replay before commit and build.
+// Criterion: review: "Running lgcc --verify-specs compiles stitched specification and validates all Lean 4 theorems with zero unproven obligations"
+
+// TODO(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
 // Description: Consume verified Rust crates emitted by prismpm through its C ABI layer (prod_codegen::CBindings / extern "C") to expose contract verification functions and invariants directly to C++.
 // Criterion: review: "cargo build produces static/dynamic library with C headers linking cleanly into C++ test runner"
 
