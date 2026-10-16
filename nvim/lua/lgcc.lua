@@ -292,7 +292,8 @@ If there are no logic errors, output: CLEAN]]
     end
 
     local stdout_chunks = {}
-    local raw_stream = ""
+    local stderr_chunks = {}
+    local model_output = ""
     local job_timeout = nil
 
     -- 35-second hard timeout guard to prevent hangs
@@ -316,38 +317,36 @@ If there are no logic errors, output: CLEAN]]
         if not data then return end
         table.insert(stdout_chunks, data)
 
-        -- Parse stream-json text_delta or raw streaming text
+        -- Stream ONLY the model's generated output tokens (never input code/ast/tools)
+        local updated = false
         for line in data:gmatch("[^\r\n]+") do
           local delta = line:match('"text_delta"%s*:%s*"(.-)"')
           if delta then
             delta = delta:gsub("\\n", " "):gsub('\\"', '"'):gsub("\\\\", "\\")
-            raw_stream = raw_stream .. delta
-            state.raw_tail = raw_stream
-          elseif not line:find('^{"event"') then
+            model_output = model_output .. delta
+            updated = true
+          elseif engine_name ~= "agy" and not line:find('^{"event"') then
             local clean = line:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
-            if clean ~= "" then
-              raw_stream = raw_stream .. " " .. clean
-              state.raw_tail = raw_stream
+            if clean ~= "" and not clean:find("^--- SOURCE") and not clean:find("^--- INTERFACE") and not clean:find("^TARGET FILE") then
+              model_output = model_output .. " " .. clean
+              updated = true
             end
           end
         end
 
-        vim.schedule(function()
-          if ticker_timer and state.render then
-            state.render()
-          end
-        end)
+        if updated then
+          state.raw_tail = model_output
+          vim.schedule(function()
+            if ticker_timer and state.render then
+              state.render()
+            end
+          end)
+        end
       end,
       stderr = function(_, data)
         if not data then return end
-        raw_stream = raw_stream .. data
-        local clean = raw_stream:gsub("\27%[[0-9;]*[a-zA-Z]", ""):gsub("[\r\n]+", " "):gsub("%s+", " "):gsub("^%s+", "")
-        state.raw_tail = clean
-        vim.schedule(function()
-          if ticker_timer and state.render then
-            state.render()
-          end
-        end)
+        table.insert(stderr_chunks, data)
+        -- Never leak stderr debug or compiler startup logs into ticker
       end,
     }, function(res)
       active_job = nil
