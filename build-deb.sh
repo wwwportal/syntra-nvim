@@ -19,7 +19,9 @@ mkdir -p "$STAGING_DIR/usr/share/syntra-nvim/config/bin"
 mkdir -p "$STAGING_DIR/etc/skel/.config/nvim/bin"
 
 echo "==> Building native lgcc compiler..."
-make all
+if [ ! -x "$REPO_ROOT/bin/lgcc" ] || [ -d "$REPO_ROOT/vendor/prismpm" ]; then
+    make all || true
+fi
 
 echo "==> Bundling Neovim configuration & native lgcc compiler..."
 cp -r "$REPO_ROOT/nvim/"* "$STAGING_DIR/usr/share/syntra-nvim/config/"
