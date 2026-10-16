@@ -662,6 +662,11 @@ vim.keymap.set("n", "<leader>ls", "<Cmd>Specs<CR>", { silent = true, desc = "Ope
 vim.keymap.set("n", "<leader>lg", "<Cmd>Specs graph<CR>", { silent = true, desc = "Open visual specs DAG" })
 
 
+-- Split statusline with lgcc integration and zero hit-enter prompts
+vim.o.laststatus = 2
+vim.opt.shortmess:append("cFWsAI")
+vim.o.statusline = "%<%f %h%w%m%r %= %{%v:lua.require('lgcc').status()%} %-14.(%l,%c%) %P"
+
 -- ── Plugin manager (lazy.nvim) ──
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
@@ -691,6 +696,7 @@ require("lazy").setup({
 		{ import = "plugins" },
 	},
 	checker = { enabled = false },
+	change_detection = { notify = false },
 })
 
 -- ── Default to a terminal when started with no file ──

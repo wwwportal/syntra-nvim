@@ -60,18 +60,57 @@ local function speak_summary(text)
   vim.fn.jobstart({ "sh", "-c", cmd })
 end
 
---- Start the animated status ticker in the command line
+local spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local split_status = {} -- bufnr -> { state = "running"|"error"|"clean", engine = "...", tail = "...", count = N, frame = 1 }
+
+--- Return formatted status for the split window's bottom bar (statusline)
+--- @param winid? number
+--- @return string
+function M.status(winid)
+  winid = winid or vim.g.statusline_winid or vim.api.nvim_get_current_win()
+  if not winid or not vim.api.nvim_win_is_valid(winid) then return "" end
+  local bufnr = vim.api.nvim_win_get_buf(winid)
+  local info = split_status[bufnr]
+  if not info then return "" end
+
+  local win_w = vim.api.nvim_win_get_width(winid)
+  if info.state == "running" then
+    local spin = spinner[info.frame or 1]
+    local prefix = string.format("%s [lgcc:%s] ", spin, info.engine or "agy")
+    local max_tail = math.max(10, math.floor(win_w * 0.40) - #prefix)
+    local tail = info.tail or "analyzing..."
+    if #tail > max_tail then
+      tail = "..." .. tail:sub(#tail - max_tail + 4)
+    end
+    return string.format("%%#LgccSpinner#%s%%*%%#LgccStreamGray#%s%%* ", prefix, tail)
+  elseif info.state == "error" then
+    return string.format("%%#DiagnosticError#● [lgcc:%s] %d error%s%%* ", info.engine or "agy", info.count or 0, (info.count == 1 and "" or "s"))
+  elseif info.state == "clean" then
+    return string.format("%%#DiagnosticOk#✓ [lgcc:%s] clean%%* ", info.engine or "agy")
+  end
+  return ""
+end
+
+--- Start the animated status ticker on the split's bottom bar
+--- @param bufnr number
 --- @param filename string
 --- @param engine? string "agy" | "opencode" | "local"
-local function start_ticker(filename, engine)
+local function start_ticker(bufnr, filename, engine)
   engine = engine or "agy"
   if ticker_timer then
     pcall(function() ticker_timer:stop(); ticker_timer:close() end)
     ticker_timer = nil
   end
 
-  local spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
   local frame = 1
+  split_status[bufnr] = {
+    state = "running",
+    engine = engine,
+    filename = filename,
+    tail = "dispatching...",
+    frame = 1,
+  }
+
   local state = {
     engine = engine,
     raw_tail = "starting...",
@@ -79,19 +118,12 @@ local function start_ticker(filename, engine)
 
   local function render()
     frame = (frame % #spinner) + 1
-    local spin = spinner[frame]
-    local tail = state.raw_tail or "analyzing..."
-    local prefix = string.format("%s [lgcc:%s] %s: ", spin, state.engine, filename)
-    local cols = vim.o.columns or 80
-    local max_tail = math.max(15, cols - #prefix - 4)
-    local display_tail = tail
-    if #display_tail > max_tail then
-      display_tail = "..." .. display_tail:sub(#display_tail - max_tail + 4)
+    if split_status[bufnr] then
+      split_status[bufnr].frame = frame
+      split_status[bufnr].engine = state.engine
+      split_status[bufnr].tail = state.raw_tail
     end
-    vim.api.nvim_echo({
-      { prefix, "LgccSpinner" },
-      { display_tail, "LgccStreamGray" },
-    }, false, {})
+    vim.cmd("redrawstatus")
   end
 
   state.render = render
@@ -102,6 +134,7 @@ local function start_ticker(filename, engine)
     render()
   end))
 
+  vim.cmd("redrawstatus")
   return state
 end
 
@@ -111,7 +144,6 @@ local function stop_ticker()
     pcall(function() ticker_timer:stop(); ticker_timer:close() end)
     ticker_timer = nil
   end
-  vim.api.nvim_echo({ { "", "" } }, false, {})
 end
 
 --- Parse LLM diagnostic output into Quickfix items
@@ -223,9 +255,11 @@ function M.lint(opts)
     active_job = nil
   end
 
-  -- Auto-save if buffer is modified
+  -- Auto-save if buffer is modified and modifiable
   if not is_dir and bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_get_option_value("modified", { buf = bufnr }) then
-    vim.cmd("silent write")
+    if vim.api.nvim_get_option_value("modifiable", { buf = bufnr }) and vim.api.nvim_get_option_value("buftype", { buf = bufnr }) == "" then
+      vim.cmd("silent! write")
+    end
   end
 
   local lines = is_dir and {} or vim.fn.readfile(filepath)
@@ -290,12 +324,16 @@ If there are no logic errors, output: CLEAN]]
   local clean_path = filepath:gsub("/+$", "")
   local file_basename = is_dir and (vim.fn.fnamemodify(clean_path, ":t") .. "/") or vim.fn.fnamemodify(clean_path, ":t")
   local budget_label = used_budget and string.format(" [+%dtok]", used_budget) or (opts.bundle and " [+deps]" or "")
-  local state = start_ticker(file_basename .. budget_label, initial_engine)
+  local state = start_ticker(bufnr, file_basename .. budget_label, initial_engine)
 
   local function execute_run(engine_name)
     state.engine = engine_name
+    if split_status[bufnr] then
+      split_status[bufnr].engine = engine_name
+    end
     local agy_model = opts.model or "gemini-3.8-flash-low"
     state.raw_tail = "dispatching to " .. engine_name .. " (" .. agy_model .. ")..."
+    vim.cmd("redrawstatus")
 
     local cmd = {}
     if engine_name == "agy" then
@@ -437,17 +475,23 @@ If there are no logic errors, output: CLEAN]]
             })
 
             -- Wrap error text based on the actual target split window width (not full columns)
-            local target_win = vim.fn.bufwinid(b)
-            local win_w = (target_win ~= -1 and vim.api.nvim_win_is_valid(target_win) and vim.api.nvim_win_get_width(target_win))
-              or (origin_win and vim.api.nvim_win_is_valid(origin_win) and vim.api.nvim_win_get_width(origin_win))
-              or vim.api.nvim_win_get_width(0)
+            local wins = vim.fn.win_findbuf(b)
+            local min_w = 999
+            for _, w in ipairs(wins) do
+              if vim.api.nvim_win_is_valid(w) then
+                min_w = math.min(min_w, vim.api.nvim_win_get_width(w))
+              end
+            end
+            if min_w == 999 then
+              min_w = (origin_win and vim.api.nvim_win_is_valid(origin_win) and vim.api.nvim_win_get_width(origin_win)) or vim.api.nvim_win_get_width(0)
+            end
+            local win_w = min_w
 
-            local source_line = (vim.api.nvim_buf_is_loaded(b) and vim.api.nvim_buf_get_lines(b, lnum, lnum + 1, false)[1]) or ""
-            local indent = source_line:match("^(%s*)") or ""
-            local prefix_indent = indent .. "  "
-            -- Account for line number column, sign column, and right padding (8-10 cols)
-            local text_area_w = math.max(30, win_w - 9)
-            local max_w = math.max(25, text_area_w - #prefix_indent)
+            -- Clean subtle prefix: 2 spaces, vertical bar, 1 space (total 4 cols)
+            local prefix = "  │ "
+            -- Reserve gutter columns: number column (~5) + sign column (2) + split border/margin (3) = 10 cols
+            local gutter = 10
+            local max_w = math.max(15, win_w - gutter - #prefix - 2)
 
             local wrapped_lines = {}
             for raw_line in item.text:gmatch("[^\r\n]+") do
@@ -482,7 +526,7 @@ If there are no logic errors, output: CLEAN]]
 
             local virt_lines = {}
             for _, wline in ipairs(wrapped_lines) do
-              table.insert(virt_lines, { { prefix_indent .. wline, "DiagnosticError" } })
+              table.insert(virt_lines, { { prefix .. wline, "DiagnosticError" } })
             end
 
             pcall(vim.api.nvim_buf_set_extmark, b, ns_lgcc, lnum, 0, {
@@ -497,6 +541,11 @@ If there are no logic errors, output: CLEAN]]
               underline = false,
               virtual_text = false,
             })
+            split_status[b] = {
+              state = "error",
+              engine = engine_name,
+              count = #diags,
+            }
           end
 
           vim.fn.setqflist(qf_items, "r")
@@ -504,11 +553,6 @@ If there are no logic errors, output: CLEAN]]
           if opts.qf then
             vim.cmd("botright copen 8")
           end
-
-          -- Auto-refresh editor screen immediately without prompting for any keypress
-          local summary_msg = string.format("● [lgcc:%s] %d error(s)", engine_name, #qf_items)
-          vim.api.nvim_echo({ { summary_msg, "DiagnosticError" } }, false, {})
-          vim.cmd("redraw")
 
           if opts.speak then
             local summary = string.format("Logical compiler found %d error%s in %s. First error at line %d: %s",
@@ -518,14 +562,16 @@ If there are no logic errors, output: CLEAN]]
         else
           pcall(vim.cmd, "cclose")
           vim.fn.setqflist({}, "r")
-          local clean_msg = string.format("✓ [lgcc:%s] clean", engine_name)
-          vim.api.nvim_echo({ { clean_msg, "DiagnosticOk" } }, false, {})
-          vim.cmd("redraw")
+          split_status[bufnr] = {
+            state = "clean",
+            engine = engine_name,
+          }
 
           if opts.speak then
             speak_summary("Logical compiler check clean. No logical errors found in " .. file_basename)
           end
         end
+        vim.cmd("redrawstatus")
       end)
     end)
   end
@@ -546,12 +592,9 @@ function M.clear()
   vim.diagnostic.reset(ns_lgcc)
   for _, b in ipairs(vim.api.nvim_list_bufs()) do
     pcall(vim.api.nvim_buf_clear_namespace, b, ns_lgcc, 0, -1)
+    split_status[b] = nil
   end
-  if was_running then
-    vim.api.nvim_echo({ { "lgcc: compilation cancelled", "ModeMsg" } }, false, {})
-  else
-    vim.api.nvim_echo({ { "lgcc: in-line diagnostics cleared", "Normal" } }, false, {})
-  end
+  vim.cmd("redrawstatus")
 end
 
 M.cancel = M.clear
