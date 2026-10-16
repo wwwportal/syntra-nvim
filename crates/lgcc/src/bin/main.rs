@@ -7,40 +7,17 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// SPEC(lgcc-dep-bundle | tier:A | depends_on:[ir-contract-skeletonizer] | blocks:[lgcc-task-synthesizer, graph-repo-scanner]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
-// Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
-// Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
-// [lean:spec]
-// def lgcc_dep_bundle : Bool := ir_contract_skeletonizer
-// theorem lgcc_dep_bundle_verified : lgcc_dep_bundle = true := by rfl
+/*
 
-// SPEC(ir-schema-formatter | tier:B | depends_on:[router-budget-knapsack] | blocks:[lgcc-cli-router-hook]): Emit unified compressed context IR schema for model prompt.
-// Description: Format target file, budget-allocated symbol skeletons, and dependency topology into compact prompt intermediate representation.
-// Criterion: review: "Formatted IR stream preserves all type contracts while achieving >70% compression"
-// [lean:spec]
-// def ir_schema_formatter : Bool := router_budget_knapsack
-// theorem ir_schema_formatter_verified : ir_schema_formatter = true := by rfl
+SPEC(ir-schema-formatter | tier:B | depends_on:[router-budget-knapsack] | blocks:[lgcc-cli-router-hook]): Emit unified compressed context IR schema for model prompt.
+Description: Format target file, budget-allocated symbol skeletons, and dependency topology into compact prompt intermediate representation.
+Criterion: review: "Formatted IR stream preserves all type contracts while achieving >70% compression"
 
-// SPEC(spec-cli-wire-protocol-dispatch | tier:B | depends_on:[spec-syntra-view-model] | blocks:[spec-golden-acceptance-vectors]): Formalize CLI argument decoding and command dispatch pipeline.
-// Description: Define structured CommandRequest and CommandResponse schemas in LexLean formalizing CLI verbs (--lint-tasks, --verify-specs, --route, --skeletonize, --extract) with typed option parsing.
-// Criterion: assert: "dispatchLgccCommand cleanly decodes CLI arguments and dispatches to verified handler functions"
-// [lean:spec]
-// inductive LgccCommand where
-//   | LintTasks
-//   | VerifySpecs
-//   | RouteContext
-//   | Skeletonize
-//   | ExtractAst
-//
-// structure CommandRequest where
-//   command : LgccCommand
-//   targetPath : String
-//   tokenBudget : Nat
-//   jsonOutput : Bool
-//
-// def cli_wire_protocol_dispatch : Bool := syntra_view_model
-// theorem cli_wire_protocol_dispatch_verified : cli_wire_protocol_dispatch = true := by rfl
+[lean:spec]
+def ir_schema_formatter : Bool := router_budget_knapsack
+theorem ir_schema_formatter_verified : ir_schema_formatter = true := by rfl
 
+*/
 fn format_ir_bundle(target_path: &Path, res: &RouteResult) -> String {
     let mut bundle = String::new();
     let is_dir = target_path.is_dir();
@@ -114,6 +91,17 @@ fn format_ir_bundle(target_path: &Path, res: &RouteResult) -> String {
     bundle
 }
 
+/*
+
+SPEC(lgcc-dep-bundle | tier:A | depends_on:[ir-contract-skeletonizer] | blocks:[lgcc-task-synthesizer, graph-repo-scanner]): Compile hermetic dependency context and type signatures into intermediate representation before model invocation.
+Description: Preprocess target files by bundling imported interfaces, external function stubs, and type definitions instead of raw binary streams or isolated files.
+Criterion: review: "lgcc CLI accepts --bundle flag that aggregates local imported module stubs without raw binary degradation"
+
+[lean:spec]
+def lgcc_dep_bundle : Bool := ir_contract_skeletonizer
+theorem lgcc_dep_bundle_verified : lgcc_dep_bundle = true := by rfl
+
+*/
 fn print_usage() {
     eprintln!(
         r#"lgcc: Logical Compiler, AST Extractor & Formal Task Engine
@@ -132,6 +120,30 @@ Subcommand aliases without '--' (e.g., 'lgcc tasks', 'lgcc fix', 'lgcc verify') 
     );
 }
 
+/*
+
+SPEC(spec-cli-wire-protocol-dispatch | tier:B | depends_on:[spec-syntra-view-model] | blocks:[spec-golden-acceptance-vectors]): Formalize CLI argument decoding and command dispatch pipeline.
+Description: Define structured CommandRequest and CommandResponse schemas in LexLean formalizing CLI verbs (--lint-tasks, --verify-specs, --route, --skeletonize, --extract) with typed option parsing.
+Criterion: assert: "dispatchLgccCommand cleanly decodes CLI arguments and dispatches to verified handler functions"
+
+[lean:spec]
+inductive LgccCommand where
+  | LintTasks
+  | VerifySpecs
+  | RouteContext
+  | Skeletonize
+  | ExtractAst
+
+structure CommandRequest where
+  command : LgccCommand
+  targetPath : String
+  tokenBudget : Nat
+  jsonOutput : Bool
+
+def cli_wire_protocol_dispatch : Bool := syntra_view_model
+theorem cli_wire_protocol_dispatch_verified : cli_wire_protocol_dispatch = true := by rfl
+
+*/
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {

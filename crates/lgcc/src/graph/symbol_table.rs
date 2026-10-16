@@ -6,20 +6,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-// SPEC(graph-repo-scanner | tier:A | depends_on:[lgcc-dep-bundle] | blocks:[graph-symbol-table]): Discover and index repository source files respecting .gitignore.
-// Description: Implement repository-wide source file scanner discovering all Python and Lua files while filtering test/build/vendor noise.
-// Criterion: review: "scripts/bundle_ir.py --scan-repo returns complete list of tracked source files"
-// [lean:spec]
-// def graph_repo_scanner : Bool := lgcc_dep_bundle
-// theorem graph_repo_scanner_verified : graph_repo_scanner = true := by rfl
+/*
 
-// SPEC(graph-symbol-table | tier:B | depends_on:[graph-repo-scanner] | blocks:[graph-edge-extractor]): Construct global symbol table mapping fully-qualified names to signatures and locations.
-// Description: Build repository symbol table V mapping module.Class.method and module.func FQNs to file locations, line ranges, and signatures.
-// Criterion: review: "Symbol table indexes all top-level classes, methods, and functions with unique FQNs"
-// [lean:spec]
-// def graph_symbol_table : Bool := graph_repo_scanner
-// theorem graph_symbol_table_verified : graph_symbol_table = true := by rfl
+SPEC(graph-symbol-table | tier:B | depends_on:[graph-repo-scanner] | blocks:[graph-edge-extractor]): Construct global symbol table mapping fully-qualified names to signatures and locations.
+Description: Build repository symbol table V mapping module.Class.method and module.func FQNs to file locations, line ranges, and signatures.
+Criterion: review: "Symbol table indexes all top-level classes, methods, and functions with unique FQNs"
 
+[lean:spec]
+def graph_symbol_table : Bool := graph_repo_scanner
+theorem graph_symbol_table_verified : graph_symbol_table = true := by rfl
+
+*/
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalSymbol {
     pub fqn: String,
@@ -35,6 +32,17 @@ pub struct GlobalSymbol {
 pub struct SymbolTable;
 
 impl SymbolTable {
+    /*
+
+    SPEC(graph-repo-scanner | tier:A | depends_on:[lgcc-dep-bundle] | blocks:[graph-symbol-table]): Discover and index repository source files respecting .gitignore.
+    Description: Implement repository-wide source file scanner discovering all Python and Lua files while filtering test/build/vendor noise.
+    Criterion: review: "scripts/bundle_ir.py --scan-repo returns complete list of tracked source files"
+
+    [lean:spec]
+    def graph_repo_scanner : Bool := lgcc_dep_bundle
+    theorem graph_repo_scanner_verified : graph_repo_scanner = true := by rfl
+
+    */
     pub fn scan_repository(repo_root: &Path) -> Vec<PathBuf> {
         let mut files = Vec::new();
 

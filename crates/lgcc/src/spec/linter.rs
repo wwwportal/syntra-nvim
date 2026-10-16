@@ -13,25 +13,6 @@ use walkdir::WalkDir;
 // translating unstructured natural language goals ("TODO: ...") into machine-checked contracts with typed tiers,
 // explicit dependency DAG edges, and verified Lean 4 / LexLean proof obligations.
 
-// SPEC(lgcc-native-linter | tier:A | depends_on:[spec-jit-patch-schema] | blocks:[tasks-add-spec-scaffold]): Rewrite scripts/lint_tasks.py into native Rust inside lgcc.
-// Description: Rewrite scripts/lint_tasks.py into native Rust inside lgcc, implementing high-performance task DAG validation, anti-erasure git checks, lazy-TODO detection, and JSON export.
-// Criterion: assert: "lgcc --lint-tasks validates repository DAG and anti-erasure constraints in <15ms with full feature parity to Python linter"
-// [lean:spec]
-// def lgcc_native_linter : Bool := spec_jit_patch_schema
-// theorem lgcc_native_linter_verified : lgcc_native_linter = true := by rfl
-
-// SPEC(spec-golden-acceptance-vectors | tier:B | depends_on:[spec-cli-wire-protocol-dispatch] | blocks:[spec-knapsack-budget-theorems]): Define acceptance vector suite verifying deterministic byte outputs.
-// Description: Define serialized AcceptanceVector schema modeling hex-encoded CLI request and response byte expectations to guard against silent output format regressions.
-// Criterion: assert: "All acceptance test vectors replay against lgcc with 100% byte integrity"
-// [lean:spec]
-// structure CliAcceptanceVector where
-//   commandVerb : String
-//   requestBytesHex : String
-//   expectedResponseHex : String
-//
-// def golden_acceptance_vectors : Bool := cli_wire_protocol_dispatch
-// theorem golden_acceptance_vectors_verified : golden_acceptance_vectors = true := by rfl
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskRecord {
     pub id: String,
@@ -45,6 +26,29 @@ pub struct TaskRecord {
     pub line: usize,
 }
 
+/*
+
+SPEC(spec-golden-acceptance-vectors | tier:B | depends_on:[spec-cli-wire-protocol-dispatch] | blocks:[spec-knapsack-budget-theorems]): Define acceptance vector suite verifying deterministic byte outputs.
+Description: Define serialized AcceptanceVector schema modeling hex-encoded CLI request and response byte expectations to guard against silent output format regressions.
+Criterion: assert: "All acceptance test vectors replay against lgcc with 100% byte integrity"
+
+[lean:spec]
+structure CliAcceptanceVector where
+  commandVerb : String
+  requestBytesHex : String
+  expectedResponseHex : String
+
+def golden_acceptance_vectors : Bool := cli_wire_protocol_dispatch
+theorem golden_acceptance_vectors_verified : golden_acceptance_vectors = true := by rfl
+
+*/
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CliAcceptanceVector {
+    pub command_verb: String,
+    pub request_bytes_hex: String,
+    pub expected_response_hex: String,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LintResult {
     pub tasks: Vec<TaskRecord>,
@@ -55,6 +59,17 @@ pub struct LintResult {
     pub lean_kernel_verified: bool,
 }
 
+/*
+
+SPEC(lgcc-native-linter | tier:A | depends_on:[spec-jit-patch-schema] | blocks:[tasks-add-spec-scaffold]): Rewrite scripts/lint_tasks.py into native Rust inside lgcc.
+Description: Rewrite scripts/lint_tasks.py into native Rust inside lgcc, implementing high-performance task DAG validation, anti-erasure git checks, lazy-TODO detection, and JSON export.
+Criterion: assert: "lgcc --lint-tasks validates repository DAG and anti-erasure constraints in <15ms with full feature parity to Python linter"
+
+[lean:spec]
+def lgcc_native_linter : Bool := spec_jit_patch_schema
+theorem lgcc_native_linter_verified : lgcc_native_linter = true := by rfl
+
+*/
 pub struct TaskLinter;
 
 impl TaskLinter {
@@ -151,9 +166,28 @@ impl TaskLinter {
                 let mut in_lean = false;
                 let mut lean_lines = Vec::new();
 
+                let mut in_block = false;
+                for l in lines.iter().take(t.line) {
+                    let tr = l.trim();
+                    if tr.starts_with("/*") || tr.starts_with("--[[") {
+                        in_block = true;
+                    }
+                    if tr.contains("*/") || tr.contains("]]") {
+                        in_block = false;
+                    }
+                }
+
                 for line in lines.iter().skip(t.line) {
                     let trimmed = line.trim();
-                    if !trimmed.starts_with("//") && !trimmed.starts_with("--") && !trimmed.starts_with('#') {
+                    if trimmed.starts_with("/*") || trimmed.starts_with("--[[") {
+                        in_block = true;
+                    }
+
+                    if in_block {
+                        if trimmed == "*/" || trimmed == "]]" || trimmed.ends_with("*/") || trimmed.ends_with("]]") {
+                            break;
+                        }
+                    } else if !trimmed.starts_with("//") && !trimmed.starts_with("--") && !trimmed.starts_with('#') {
                         break;
                     }
 
@@ -161,6 +195,10 @@ impl TaskLinter {
                         .trim_start_matches("//")
                         .trim_start_matches("--")
                         .trim_start_matches('#')
+                        .trim_start_matches("/*")
+                        .trim_end_matches("*/")
+                        .trim_end_matches("]]")
+                        .trim_start_matches('*')
                         .trim();
 
                     if payload.starts_with("SPEC(") || payload.starts_with("TODO(") || payload.starts_with("FIXME(") {
@@ -189,7 +227,9 @@ impl TaskLinter {
                     }
 
                     if in_lean {
-                        lean_lines.push(payload.to_string());
+                        if !payload.is_empty() {
+                            lean_lines.push(payload.to_string());
+                        }
                     } else if in_decl && payload.starts_with('{') {
                         stitched_declarations.push(payload.to_string());
                     } else if in_thm && payload.starts_with('{') {
@@ -295,27 +335,60 @@ impl TaskLinter {
             .to_string();
 
         let task_header_re = Regex::new(
-            r"^[ \t]*(?:#|//|--)\s*(TODO|FIXME|SPEC)\(([a-zA-Z0-9_\-]+)\s*\|\s*tier:([ABC])((?:\s*\|\s*(?:blocks|depends_on):\[[a-zA-Z0-9_\-,\s]*\])*)\):(?:\s*(.*))?$"
+            r"^[ \t]*(?:#|//|--|/\*|\*|\*/)?\s*(TODO|FIXME|SPEC)\(([a-zA-Z0-9_\-]+)\s*\|\s*tier:([ABC])((?:\s*\|\s*(?:blocks|depends_on):\[[a-zA-Z0-9_\-,\s]*\])*)\):(?:\s*(.*))?$"
         ).unwrap();
         let any_todo_re = Regex::new(
-            r"(?i)^[ \t]*(?:#|//|--)\s*(TODO|FIXME|SPEC)\b"
+            r"(?i)^[ \t]*(?:#|//|--|/\*|\*|\*)?\s*(TODO|FIXME|SPEC)\b"
         ).unwrap();
-        let desc_re = Regex::new(r"^[ \t]*(?:#|//|--)\s*Description:\s*(.+)$").unwrap();
-        let crit_re = Regex::new(r"^[ \t]*(?:#|//|--)\s*Criterion:\s*(assert:\s*.+|review:\s*.+)$").unwrap();
+        let desc_re = Regex::new(r"^[ \t]*(?:#|//|--|/\*|\*|\*)?\s*Description:\s*(.+)$").unwrap();
+        let crit_re = Regex::new(r"^[ \t]*(?:#|//|--|/\*|\*|\*)?\s*Criterion:\s*(assert:\s*.+|review:\s*.+)$").unwrap();
 
         let lines: Vec<&str> = content.lines().collect();
+        let mut in_block = false;
 
         for (i, line) in lines.iter().enumerate() {
             let line_num = i + 1;
+            let trimmed = line.trim();
+
+            if trimmed.starts_with("/*") || trimmed.starts_with("--[[") {
+                in_block = true;
+            }
+
+            let is_comment_line = in_block
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("--")
+                || trimmed.starts_with('#');
+
+            if in_block && (trimmed.contains("*/") || trimmed.contains("]]")) {
+                in_block = false;
+            }
+
+            if !is_comment_line {
+                continue;
+            }
 
             if any_todo_re.is_match(line) && !task_header_re.is_match(line) {
-                errors.push(format!(
-                    "{}:{}: Unstructured task comment.\n  Found: {}\n  Must match: -- TODO(<id> | tier:<A|B|C> [| blocks:[...]] [| depends_on:[...]]):",
-                    rel_path,
-                    line_num,
-                    line.trim()
-                ));
-                continue;
+                let p = trimmed
+                    .trim_start_matches("//")
+                    .trim_start_matches("--")
+                    .trim_start_matches('#')
+                    .trim_start_matches("/*")
+                    .trim_end_matches("*/")
+                    .trim_end_matches("]]")
+                    .trim_start_matches('*')
+                    .trim();
+
+                if p.to_lowercase().starts_with("todo") || p.to_lowercase().starts_with("fixme") || p.to_lowercase().starts_with("spec") {
+                    if !p.starts_with("Description:") && !p.starts_with("Criterion:") {
+                        errors.push(format!(
+                            "{}:{}: Unstructured task comment.\n  Found: {}\n  Must match: TODO(<id> | tier:<A|B|C> [| blocks:[...]] [| depends_on:[...]]):",
+                            rel_path,
+                            line_num,
+                            line.trim()
+                        ));
+                        continue;
+                    }
+                }
             }
 
             if let Some(caps) = task_header_re.captures(line) {
@@ -352,9 +425,22 @@ impl TaskLinter {
                 let mut description = inline_desc.to_string();
                 let mut criterion = String::new();
 
-                for next_line in lines.iter().skip(line_num).take(5) {
-                    let trimmed = next_line.trim();
-                    if !trimmed.starts_with("//") && !trimmed.starts_with("--") && !trimmed.starts_with('#') {
+                for next_line in lines.iter().skip(line_num).take(10) {
+                    let next_trimmed = next_line.trim();
+                    if next_trimmed == "*/" || next_trimmed == "]]" {
+                        break;
+                    }
+                    let p = next_trimmed
+                        .trim_start_matches("//")
+                        .trim_start_matches("--")
+                        .trim_start_matches('#')
+                        .trim_start_matches("/*")
+                        .trim_end_matches("*/")
+                        .trim_end_matches("]]")
+                        .trim_start_matches('*')
+                        .trim();
+
+                    if p.starts_with("SPEC(") || p.starts_with("TODO(") || p.starts_with("FIXME(") {
                         break;
                     }
                     if let Some(dcaps) = desc_re.captures(next_line) {
@@ -465,7 +551,7 @@ impl TaskLinter {
             let active_ids: HashSet<&str> = active_tasks.iter().map(|t| t.id.as_str()).collect();
             let mut deleted_todos = Vec::new();
 
-            let todo_re = Regex::new(r#"^-[ \t]*(?:#|//|--)\s*(?:TODO|FIXME|SPEC)\(([a-zA-Z0-9_\-]+)\s*\|"#).unwrap();
+            let todo_re = Regex::new(r#"^-[ \t]*(?:#|//|--|/\*|\*|\*)?\s*(?:TODO|FIXME|SPEC)\(([a-zA-Z0-9_\-]+)\s*\|"#).unwrap();
 
             for line in diff_text.lines() {
                 if !line.starts_with("---") {
@@ -843,5 +929,54 @@ impl TaskLinter {
         }
 
         (fixed_count, report)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_scan_file_multiline_comment() {
+        let temp_dir = std::env::temp_dir().join(format!("lgcc_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let file_path = temp_dir.join("test.rs");
+        let tag = format!("{}(test-multiline | tier:B)", "SPEC");
+        let content = format!(
+            "/*\n\n{}: Test multiline block comment\nDescription: Ensure block comments work properly.\nCriterion: assert: \"Block comments parse correctly\"\n\n[lean:spec]\ndef test_multiline : Bool := 10 >= 0\ntheorem test_multiline_verified : test_multiline = true := by decide\n\n*/\npub fn dummy() {{}}\n",
+            tag
+        );
+        fs::write(&file_path, content).unwrap();
+
+        let mut tasks = Vec::new();
+        let mut errors = Vec::new();
+        TaskLinter::scan_file(&file_path, &temp_dir, &mut tasks, &mut errors);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        assert!(errors.is_empty(), "Expected 0 errors, got: {:?}", errors);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "test-multiline");
+        assert_eq!(tasks[0].description, "Ensure block comments work properly.");
+    }
+
+    #[test]
+    fn test_lint_repository_multiline_comment() {
+        let temp_dir = std::env::temp_dir().join(format!("lgcc_lint_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let file_path = temp_dir.join("test.rs");
+        let tag = format!("{}(test-spec-block | tier:B)", "SPEC");
+        let content = format!(
+            "/*\n\n{}: Test multiline block comment spec\nDescription: Ensure block comments extract lean specs properly.\nCriterion: assert: \"Block comments extract lean specs correctly\"\n\n[lean:spec]\ninductive TaskTier where\n  | TierA\n  | TierB\n  | TierC\n\nstructure TaskRecord where\n  id : String\n  tier : TaskTier\n\nstructure ContextBudget where\n  maxTokens : Nat\n\nstructure SymbolNode where\n  name : String\n\nstructure TestStruct where\n  count : Nat\n\ndef test_spec_block : Bool := 10 >= 0\ntheorem test_spec_block_verified : test_spec_block = true := by decide\n\n*/\npub fn dummy_block() {{}}\n",
+            tag
+        );
+        fs::write(&file_path, content).unwrap();
+
+        let res = TaskLinter::lint_repository(&temp_dir);
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        assert!(res.errors.is_empty(), "Expected 0 lint errors, got: {:?}", res.errors);
+        assert_eq!(res.tasks.len(), 1);
+        assert!(res.lean_kernel_verified, "Expected Lean kernel verification to pass");
     }
 }

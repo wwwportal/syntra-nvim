@@ -5,69 +5,17 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// SPEC(ir-ast-extractor | tier:A | blocks:[ir-contract-skeletonizer]): Extract symbols, declarations, and import edges from Python and Lua ASTs.
-// Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
-// Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
-// [lean:spec]
-// inductive TaskTier where
-//   | TierA
-//   | TierB
-//   | TierC
-//
-// structure TaskRecord where
-//   id : String
-//   tier : TaskTier
-//   file : String
-//   line : Nat
-//   completed : Bool
-//
-// structure ContextBudget where
-//   maxTokens : Nat
-//   allocatedTokens : Nat
-//   remainingTokens : Nat
-//
-// structure SymbolNode where
-//   name : String
-//   kind : String
-//   file : String
-//   tokenCost : Nat
-//
-// def ir_ast_extractor : Bool := 100 >= 0 && 0 <= 100
-// theorem ir_ast_extractor_verified : ir_ast_extractor = true := by decide
+/*
 
-// SPEC(lgcc-spec-scanner | tier:B | depends_on:[tasks-lexlean-invariant-synthesis] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
-// Description: Implement in-line specification patch scanner in native Rust extracting distributed LexLean fragments and dependency tags across all source files.
-// Criterion: assert: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
-// [lean:spec]
-// inductive Tier where
-//   | TierA
-//   | TierB
-//   | TierC
-//
-// def lgcc_spec_scanner : Bool := tasks_lexlean_invariant_synthesis
-// theorem lgcc_spec_scanner_verified : lgcc_spec_scanner = true := by rfl
+SPEC(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Integrate prismpm-generated Rust verification module into lgcc.
+Description: Consume verified Rust crates emitted by prismpm directly into lgcc to expose contract verification functions and invariants directly to the Rust engine without FFI boundaries.
+Criterion: assert: "cargo build produces native binary linking cleanly into spec test runner"
 
-// SPEC(prismpm-jit-verifier | tier:B | depends_on:[lgcc-topo-spec-stitcher] | blocks:[prismpm-rust-bridge]): Execute Just-In-Time formal verification of stitched LexLean specifications.
-// Description: Hook lgcc JIT-stitched .lex.tex specification into prismpm check and lexlean verify to execute machine-checked proof replay before commit and build.
-// Criterion: assert: "Running lgcc --verify-specs compiles stitched specification and validates all Lean 4 theorems with zero unproven obligations"
-// [lean:spec]
-// def prismpm_jit_verifier : Bool := lgcc_topo_spec_stitcher
-// theorem prismpm_jit_verifier_verified : prismpm_jit_verifier = true := by rfl
+[lean:spec]
+def prismpm_rust_bridge : Bool := prismpm_jit_verifier
+theorem prismpm_rust_bridge_verified : prismpm_rust_bridge = true := by rfl
 
-// SPEC(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Integrate prismpm-generated Rust verification module into lgcc.
-// Description: Consume verified Rust crates emitted by prismpm directly into lgcc to expose contract verification functions and invariants directly to the Rust engine without FFI boundaries.
-// Criterion: assert: "cargo build produces native binary linking cleanly into spec test runner"
-// [lean:spec]
-// def prismpm_rust_bridge : Bool := prismpm_jit_verifier
-// theorem prismpm_rust_bridge_verified : prismpm_rust_bridge = true := by rfl
-
-// SPEC(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-rust-bridge]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
-// Description: Connect lgcc AST extractor and IR compiler with native Rust verification modules to validate formal contracts and invariants at compile and lint time.
-// Criterion: assert: "lgcc validates LexLean-extracted contract assertions during static analysis passes"
-// [lean:spec]
-// def lgcc_lexlean_verifier : Bool := prismpm_rust_bridge
-// theorem lgcc_lexlean_verifier_verified : lgcc_lexlean_verifier = true := by rfl
-
+*/
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractedModule {
     pub filepath: PathBuf,
@@ -76,9 +24,54 @@ pub struct ExtractedModule {
     pub symbols: Vec<Symbol>,
 }
 
+/*
+
+SPEC(ir-ast-extractor | tier:A | blocks:[ir-contract-skeletonizer]): Extract symbols, declarations, and import edges from Python and Lua ASTs.
+Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
+Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
+
+[lean:spec]
+inductive TaskTier where
+  | TierA
+  | TierB
+  | TierC
+
+structure TaskRecord where
+  id : String
+  tier : TaskTier
+  file : String
+  line : Nat
+  completed : Bool
+
+structure ContextBudget where
+  maxTokens : Nat
+  allocatedTokens : Nat
+  remainingTokens : Nat
+
+structure SymbolNode where
+  name : String
+  kind : String
+  file : String
+  tokenCost : Nat
+
+def ir_ast_extractor : Bool := 100 >= 0 && 0 <= 100
+theorem ir_ast_extractor_verified : ir_ast_extractor = true := by decide
+
+*/
 pub struct Extractor;
 
 impl Extractor {
+    /*
+
+    SPEC(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-rust-bridge]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
+    Description: Connect lgcc AST extractor and IR compiler with native Rust verification modules to validate formal contracts and invariants at compile and lint time.
+    Criterion: assert: "lgcc validates LexLean-extracted contract assertions during static analysis passes"
+
+    [lean:spec]
+    def lgcc_lexlean_verifier : Bool := prismpm_rust_bridge
+    theorem lgcc_lexlean_verifier_verified : lgcc_lexlean_verifier = true := by rfl
+
+    */
     pub fn extract(path: &Path) -> ExtractedModule {
         let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
         let content = fs::read_to_string(path).unwrap_or_default();
@@ -97,6 +90,17 @@ impl Extractor {
         }
     }
 
+    /*
+
+    SPEC(prismpm-jit-verifier | tier:B | depends_on:[lgcc-topo-spec-stitcher] | blocks:[prismpm-rust-bridge]): Execute Just-In-Time formal verification of stitched LexLean specifications.
+    Description: Hook lgcc JIT-stitched .lex.tex specification into prismpm check and lexlean verify to execute machine-checked proof replay before commit and build.
+    Criterion: assert: "Running lgcc --verify-specs compiles stitched specification and validates all Lean 4 theorems with zero unproven obligations"
+
+    [lean:spec]
+    def prismpm_jit_verifier : Bool := lgcc_topo_spec_stitcher
+    theorem prismpm_jit_verifier_verified : prismpm_jit_verifier = true := by rfl
+
+    */
     pub fn to_json(mod_data: &ExtractedModule) -> String {
         serde_json::to_string_pretty(mod_data).unwrap_or_else(|_| "{}".to_string())
     }
@@ -293,6 +297,22 @@ impl Extractor {
         mod_data
     }
 
+    /*
+
+    SPEC(lgcc-spec-scanner | tier:B | depends_on:[tasks-lexlean-invariant-synthesis] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
+    Description: Implement in-line specification patch scanner in native Rust extracting distributed LexLean fragments and dependency tags across all source files.
+    Criterion: assert: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
+
+    [lean:spec]
+    inductive Tier where
+      | TierA
+      | TierB
+      | TierC
+
+    def lgcc_spec_scanner : Bool := tasks_lexlean_invariant_synthesis
+    theorem lgcc_spec_scanner_verified : lgcc_spec_scanner = true := by rfl
+
+    */
     fn extract_rust(path: &Path, content: &str) -> ExtractedModule {
         let mut mod_data = ExtractedModule {
             filepath: path.to_path_buf(),

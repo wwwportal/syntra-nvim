@@ -3,31 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-// TODO(convert-code-graph-tensors | tier:B): convert code graph to tensors
-// Description: convert code graph to tensors
-// Criterion: review: "convert code graph to tensors"
+/*
 
-// SPEC(graph-edge-extractor | tier:B | depends_on:[graph-symbol-table] | blocks:[ir-graph-builder]): Extract cross-file call-graph and type-reference dependency edges.
-// Description: Resolve AST call sites and type annotations against the global symbol table to generate directed dependency edges E.
-// Criterion: review: "Extracted graph contains verified caller->callee edges across different modules"
-// [lean:spec]
-// def graph_edge_extractor : Bool := graph_symbol_table
-// theorem graph_edge_extractor_verified : graph_edge_extractor = true := by rfl
+SPEC(graph-edge-extractor | tier:B | depends_on:[graph-symbol-table] | blocks:[ir-graph-builder]): Extract cross-file call-graph and type-reference dependency edges.
+Description: Resolve AST call sites and type annotations against the global symbol table to generate directed dependency edges E.
+Criterion: review: "Extracted graph contains verified caller->callee edges across different modules"
 
-// SPEC(ir-graph-builder | tier:B | depends_on:[graph-edge-extractor] | blocks:[router-distance-decay]): Construct global multi-file repository symbol dependency graph.
-// Description: Assemble and serialize global repository symbol DAG G=(V, E) into compact adjacency representation.
-// Criterion: review: "scripts/bundle_ir.py --graph returns full repository symbol DAG with verified node and edge counts"
-// [lean:spec]
-// def ir_graph_builder : Bool := graph_edge_extractor
-// theorem ir_graph_builder_verified : ir_graph_builder = true := by rfl
+[lean:spec]
+def graph_edge_extractor : Bool := graph_symbol_table
+theorem graph_edge_extractor_verified : graph_edge_extractor = true := by rfl
 
-// SPEC(lgcc-topo-spec-stitcher | tier:B | depends_on:[lgcc-spec-scanner] | blocks:[prismpm-jit-verifier]): Topologically assemble distributed specification patches into canonical .lex.tex document.
-// Description: Implement topological specification stitcher in lgcc assembling distributed specification fragments into a unified, mathematically sound .lex.tex document ordered by dependency graph.
-// Criterion: assert: "lgcc --stitch-specs produces valid .lex.tex document preserving topological ordering of all types, definitions, and theorems"
-// [lean:spec]
-// def lgcc_topo_spec_stitcher : Bool := lgcc_spec_scanner
-// theorem lgcc_topo_spec_stitcher_verified : lgcc_topo_spec_stitcher = true := by rfl
-
+*/
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphEdge {
     pub from_fqn: String,
@@ -36,6 +22,17 @@ pub struct GraphEdge {
     pub weight: f64,
 }
 
+/*
+
+SPEC(ir-graph-builder | tier:B | depends_on:[graph-edge-extractor] | blocks:[router-distance-decay]): Construct global multi-file repository symbol dependency graph.
+Description: Assemble and serialize global repository symbol DAG G=(V, E) into compact adjacency representation.
+Criterion: review: "scripts/bundle_ir.py --graph returns full repository symbol DAG with verified node and edge counts"
+
+[lean:spec]
+def ir_graph_builder : Bool := graph_edge_extractor
+theorem ir_graph_builder_verified : ir_graph_builder = true := by rfl
+
+*/
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DependencyGraph {
     pub nodes: HashMap<String, GlobalSymbol>,
@@ -44,6 +41,25 @@ pub struct DependencyGraph {
     pub edges: Vec<GraphEdge>,
 }
 
+/*
+
+TODO(convert-code-graph-tensors | tier:B): convert code graph to tensors
+Description: convert code graph to tensors
+Criterion: review: "convert code graph to tensors"
+
+*/
+
+/*
+
+SPEC(lgcc-topo-spec-stitcher | tier:B | depends_on:[lgcc-spec-scanner] | blocks:[prismpm-jit-verifier]): Topologically assemble distributed specification patches into canonical .lex.tex document.
+Description: Implement topological specification stitcher in lgcc assembling distributed specification fragments into a unified, mathematically sound .lex.tex document ordered by dependency graph.
+Criterion: assert: "lgcc --stitch-specs produces valid .lex.tex document preserving topological ordering of all types, definitions, and theorems"
+
+[lean:spec]
+def lgcc_topo_spec_stitcher : Bool := lgcc_spec_scanner
+theorem lgcc_topo_spec_stitcher_verified : lgcc_topo_spec_stitcher = true := by rfl
+
+*/
 pub struct GraphBuilder;
 
 impl GraphBuilder {

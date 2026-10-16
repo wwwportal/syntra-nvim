@@ -3,13 +3,6 @@ use regex::Regex;
 use std::fs;
 use std::path::Path;
 
-// SPEC(ir-contract-skeletonizer | tier:A | depends_on:[ir-ast-extractor] | blocks:[lgcc-dep-bundle]): Skeletonize implementation bodies while preserving signatures and invariants.
-// Description: Replace function and method bodies with stubs while retaining complete type annotations, docstring invariants, and interface definitions.
-// Criterion: review: "Skeletonizer achieves >70% character and token reduction on target modules while preserving all exported signatures"
-// [lean:spec]
-// def ir_contract_skeletonizer : Bool := ir_ast_extractor
-// theorem ir_contract_skeletonizer_verified : ir_contract_skeletonizer = true := by rfl
-
 #[derive(Debug, Clone, Default)]
 pub struct SkeletonMetrics {
     pub orig_chars: usize,
@@ -25,6 +18,17 @@ pub struct SkeletonMetrics {
 pub struct Skeletonizer;
 
 impl Skeletonizer {
+    /*
+
+    SPEC(ir-contract-skeletonizer | tier:A | depends_on:[ir-ast-extractor] | blocks:[lgcc-dep-bundle]): Skeletonize implementation bodies while preserving signatures and invariants.
+    Description: Replace function and method bodies with stubs while retaining complete type annotations, docstring invariants, and interface definitions.
+    Criterion: review: "Skeletonizer achieves >70% character and token reduction on target modules while preserving all exported signatures"
+
+    [lean:spec]
+    def ir_contract_skeletonizer : Bool := ir_ast_extractor
+    theorem ir_contract_skeletonizer_verified : ir_contract_skeletonizer = true := by rfl
+
+    */
     pub fn skeletonize(path: &Path) -> String {
         let content = match fs::read_to_string(path) {
             Ok(c) => c,
