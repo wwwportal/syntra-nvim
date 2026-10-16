@@ -33,8 +33,8 @@ use std::path::{Path, PathBuf};
 // [lexlean:theorems]
 // {"kind":"theorem","name":"prismpm_jit_verifier_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
-// SPEC(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
-// Description: Consume verified Rust crates emitted by prismpm through its C ABI layer (prod_codegen::CBindings / extern "C") to expose contract verification functions and invariants directly to the Rust engine and FFI.
+// SPEC(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Integrate prismpm-generated Rust verification module into lgcc.
+// Description: Consume verified Rust crates emitted by prismpm directly into lgcc to expose contract verification functions and invariants directly to the Rust engine without FFI boundaries.
 // Criterion: assert: "cargo build produces native binary linking cleanly into spec test runner"
 // [lexlean:declarations]
 // {"body":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"kind":"definition","name":"prismpm_rust_bridge","parameters":[],"result":{"kind":"bool"}}
@@ -42,8 +42,8 @@ use std::path::{Path, PathBuf};
 // {"kind":"theorem","name":"prismpm_rust_bridge_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"prismpm_rust_bridge"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 // SPEC(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-rust-bridge]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
-// Description: Connect lgcc AST extractor and IR compiler with prismpm Rust/C FFI verifier to validate formal contracts and invariants at compile and lint time.
-// Criterion: assert: "lgcc validates LexLean-extracted contract assertions via FFI during static analysis passes"
+// Description: Connect lgcc AST extractor and IR compiler with native Rust verification modules to validate formal contracts and invariants at compile and lint time.
+// Criterion: assert: "lgcc validates LexLean-extracted contract assertions during static analysis passes"
 // [lexlean:declarations]
 // {"body":{"arguments":[],"function":{"name":"prismpm_rust_bridge"},"kind":"call"},"kind":"definition","name":"lgcc_lexlean_verifier","parameters":[],"result":{"kind":"bool"}}
 // [lexlean:theorems]

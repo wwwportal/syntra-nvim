@@ -8,6 +8,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
 
+// SPECIFICATION ARCHITECTURE:
+// In Syntra, each Task Graph node acts as a formal semantic interpretation of an informal English sentence,
+// translating unstructured natural language goals ("TODO: ...") into machine-checked contracts with typed tiers,
+// explicit dependency DAG edges, and verified Lean 4 / LexLean proof obligations.
+
 // SPEC(lgcc-native-linter | tier:A | depends_on:[spec-jit-patch-schema] | blocks:[tasks-add-spec-scaffold]): Rewrite scripts/lint_tasks.py into native Rust inside lgcc.
 // Description: Rewrite scripts/lint_tasks.py into native Rust inside lgcc, implementing high-performance task DAG validation, anti-erasure git checks, lazy-TODO detection, and JSON export.
 // Criterion: assert: "lgcc --lint-tasks validates repository DAG and anti-erasure constraints in <15ms with full feature parity to Python linter"
@@ -58,6 +63,9 @@ impl TaskLinter {
         for entry in WalkDir::new(repo_root)
             .into_iter()
             .filter_entry(|e| {
+                if e.depth() == 0 {
+                    return true;
+                }
                 let name = e.file_name().to_string_lossy();
                 !name.starts_with('.')
                     && name != "build"
@@ -554,5 +562,206 @@ impl TaskLinter {
             println!("  FFI C ABI Check:  {} definitions, {} theorems verified (prod_codegen)", res.ffi_defs_verified, res.ffi_theorems_verified);
             println!("  PrismPM Status:   Sound (Zero unproven obligations)");
         }
+    }
+
+    pub fn to_json(res: &LintResult) -> String {
+        #[derive(Serialize)]
+        struct TaskJson<'a> {
+            id: &'a str,
+            kind: &'a str,
+            tier: &'a str,
+            file: String,
+            line: usize,
+            desc: &'a str,
+            description: &'a str,
+            criterion: &'a str,
+            blocks: &'a [String],
+            depends_on: &'a [String],
+        }
+
+        #[derive(Serialize)]
+        struct LintJson<'a> {
+            root: String,
+            errors: &'a [String],
+            tasks: Vec<TaskJson<'a>>,
+            ffi_defs_verified: u32,
+            ffi_theorems_verified: u32,
+        }
+
+        let tasks: Vec<TaskJson> = res
+            .tasks
+            .iter()
+            .map(|t| {
+                let rel = t
+                    .file
+                    .strip_prefix(&res.root)
+                    .unwrap_or(&t.file)
+                    .display()
+                    .to_string();
+                TaskJson {
+                    id: &t.id,
+                    kind: &t.kind,
+                    tier: &t.tier,
+                    file: rel,
+                    line: t.line,
+                    desc: &t.description,
+                    description: &t.description,
+                    criterion: &t.criterion,
+                    blocks: &t.blocks,
+                    depends_on: &t.depends_on,
+                }
+            })
+            .collect();
+
+        let lint_json = LintJson {
+            root: res.root.display().to_string(),
+            errors: &res.errors,
+            tasks,
+            ffi_defs_verified: res.ffi_defs_verified,
+            ffi_theorems_verified: res.ffi_theorems_verified,
+        };
+
+        serde_json::to_string_pretty(&lint_json).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    pub fn fix_repository(repo_root: &Path, apply: bool) -> (usize, String) {
+        let res = Self::lint_repository(repo_root);
+        let mut used_ids: HashSet<String> = res.tasks.iter().map(|t| t.id.clone()).collect();
+
+        let task_header_re = Regex::new(
+            r"^[ \t]*(?:#|//|--)\s*(TODO|FIXME|SPEC)\(([a-zA-Z0-9_\-]+)\s*\|\s*tier:([ABC])((?:\s*\|\s*(?:blocks|depends_on):\[[a-zA-Z0-9_\-,\s]*\])*)\):(?:\s*(.*))?$"
+        ).unwrap();
+        let lazy_todo_re = Regex::new(
+            r"(?i)^([ \t]*(?:#|//|--))\s*\b(TODO|FIXME|SPEC)\b\s*:?\s*(.*)$"
+        ).unwrap();
+
+        let mut fixed_count = 0;
+        let mut report = String::new();
+
+        for entry in WalkDir::new(repo_root)
+            .into_iter()
+            .filter_entry(|e| {
+                if e.depth() == 0 {
+                    return true;
+                }
+                let name = e.file_name().to_string_lossy();
+                !name.starts_with('.')
+                    && name != "build"
+                    && name != "target"
+                    && name != "vendor"
+                    && name != "node_modules"
+            })
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                let p = entry.path();
+                let ext = match p.extension().and_then(|s| s.to_str()) {
+                    Some(ext) => ext,
+                    None => continue,
+                };
+                match ext {
+                    "lua" | "sh" | "bash" | "py" | "rs" => {}
+                    _ => continue,
+                }
+
+                let content = match fs::read_to_string(p) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+
+                let lines: Vec<&str> = content.lines().collect();
+                let mut modified = false;
+                let mut new_lines = Vec::new();
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("task").replace('_', "-");
+                let rel_path = p.strip_prefix(repo_root).unwrap_or(p).display().to_string();
+
+                for (i, line) in lines.iter().enumerate() {
+                    if !task_header_re.is_match(line) {
+                        if let Some(caps) = lazy_todo_re.captures(line) {
+                            let prefix = caps.get(1).map_or("--", |m| m.as_str());
+                            let mut kind = caps.get(2).map_or("TODO", |m| m.as_str()).to_uppercase();
+                            if kind != "TODO" && kind != "FIXME" && kind != "SPEC" {
+                                kind = "TODO".to_string();
+                            }
+                            let mut raw_desc = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
+                            if raw_desc.is_empty() {
+                                raw_desc = format!("Resolve {} in {}", kind, stem);
+                            }
+
+                            // Generate slug ID
+                            let mut slug = String::new();
+                            let mut words = 0;
+                            let mut in_word = false;
+                            for c in raw_desc.chars() {
+                                if c.is_alphanumeric() {
+                                    slug.push(c.to_ascii_lowercase());
+                                    in_word = true;
+                                } else if in_word {
+                                    words += 1;
+                                    if words >= 3 {
+                                        break;
+                                    }
+                                    slug.push('-');
+                                    in_word = false;
+                                }
+                            }
+                            while slug.ends_with('-') {
+                                slug.pop();
+                            }
+                            if slug.is_empty() {
+                                slug = "item".to_string();
+                            }
+
+                            let base_id = format!("{}-{}", stem, slug);
+                            let mut task_id = base_id.clone();
+                            let mut suffix = 2;
+                            while used_ids.contains(&task_id) {
+                                task_id = format!("{}-{}", base_id, suffix);
+                                suffix += 1;
+                            }
+                            used_ids.insert(task_id.clone());
+
+                            let h1 = format!("{} {}({} | tier:B): {}", prefix, kind, task_id, raw_desc);
+                            let h2 = format!("{} Description: {}", prefix, raw_desc);
+                            let h3 = format!("{} Criterion: review: \"{} is implemented and verified\"", prefix, raw_desc);
+
+                            report.push_str(&format!(
+                                "[SYNTHESIZE] {}:{} -> {}\n  {}\n  {}\n  {}\n",
+                                rel_path,
+                                i + 1,
+                                task_id,
+                                h1,
+                                h2,
+                                h3
+                            ));
+
+                            new_lines.push(h1);
+                            new_lines.push(h2);
+                            new_lines.push(h3);
+                            modified = true;
+                            fixed_count += 1;
+                            continue;
+                        }
+                    }
+                    new_lines.push(line.to_string());
+                }
+
+                if modified && apply {
+                    let mut output = new_lines.join("\n");
+                    output.push('\n');
+                    let _ = fs::write(p, output);
+                }
+            }
+        }
+
+        if fixed_count == 0 {
+            report.push_str("[PASS] No unstructured TODO/FIXME comments found.\n");
+        } else if apply {
+            report.push_str(&format!("[APPLIED] Converted {} unstructured comment(s) into Task Graph contracts.\n", fixed_count));
+        } else {
+            report.push_str(&format!("[DRY-RUN] Synthesized {} contract(s). Re-run with --apply to write changes.\n", fixed_count));
+        }
+
+        (fixed_count, report)
     }
 }

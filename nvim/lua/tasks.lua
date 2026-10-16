@@ -2,6 +2,12 @@
 -- tasks.lua: Source-First DAG & Taskwarrior Navigator
 -- Provides the unified :Tasks command for Neovim.
 -- Displays in-tree source TODOs (prover / syntra-nvim) or Taskwarrior tasks in a jumpable split.
+--
+-- SPECIFICATION ARCHITECTURE:
+-- In Syntra, each Task Graph node acts as a formal, machine-checked interpretation
+-- of an informal English sentence ("TODO: ..."), translating unstructured natural
+-- language intent into a typed DAG node with explicit dependencies, tiers, and
+-- verifiable LexLean / Lean 4 acceptance theorems.
 -- ==============================================================================
 
 -- SPEC(unified-tasks | tier:A | blocks:[syntra-plugin-bundle]): Bridge Taskwarrior and in-tree source TODOs into unified Neovim UI.
@@ -134,8 +140,13 @@ local function get_active_dirs()
 end
 
 local function get_lgcc_bin()
+  local exepath = vim.fn.exepath("lgcc")
+  if exepath ~= "" and vim.fn.executable(exepath) == 1 then
+    return exepath
+  end
   local candidates = {
     vim.fn.expand("~/code/syntra-nvim/bin/lgcc"),
+    vim.fn.expand("~/.local/bin/lgcc"),
     vim.fn.expand("~/.config/nvim/bin/lgcc"),
     "/usr/local/bin/lgcc",
     "/usr/bin/lgcc",
@@ -308,12 +319,13 @@ local function show_repo_tasks(repo_path, origin_win, target_task_id)
     end
     local blocks_str = (#t.blocks > 0) and (" -> blocks [" .. table.concat(t.blocks, ", ") .. "]") or ""
     local deps_str = (#t.depends_on > 0) and (" (depends on: " .. table.concat(t.depends_on, ", ") .. ")") or ""
-    local fullpath = root .. "/" .. t.file
+    local file_str = t.file or ""
+    local fullpath = (file_str:sub(1, 1) == "/") and file_str or (root .. "/" .. file_str)
 
     table.insert(qf, {
       filename = fullpath,
       lnum = t.line,
-      text = string.format("[Tier %s] %s%s%s: %s", t.tier, t.id, deps_str, blocks_str, t.desc),
+      text = string.format("[Tier %s] %s%s%s: %s", t.tier, t.id, deps_str, blocks_str, t.desc or t.description or ""),
       type = t.tier == "A" and "E" or (t.tier == "B" and "W" or "I"),
     })
   end

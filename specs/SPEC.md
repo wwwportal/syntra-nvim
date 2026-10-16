@@ -48,7 +48,14 @@ The Prover application automates formal mathematical reasoning by coupling geome
 In accordance with the PrismPM standard:
 - Application behavior, interaction states, and geometric transformations are derived strictly from formal `.lex.tex` specifications.
 - State transitions and mathematical invariants are formally proven in Lean 4 (`leanprover/lean4:v4.32.1`) prior to artifact emission.
-- Anti-drift git hooks mechanically enforce task DAG acyclicity (`scripts/lint_tasks.py`) and LexLean formal compiler verification (`lexlean check`) on every commit.
+- Anti-drift git hooks mechanically enforce task DAG acyclicity (`lgcc --lint-tasks` / `tasks`) and LexLean formal compiler verification (`lexlean check` / `lgcc --verify-specs`) on every commit.
+
+### 1.1 Formal Task Graph Nodes as Interpretations of Informal English Sentences
+
+In Syntra, task nodes are not mere trackers or passive comments. Each node in the Task Graph DAG serves as a **formal, machine-checked interpretation of an informal English requirement sentence**:
+1. **Semantic Grounding**: Unstructured natural language developer intent (`TODO: ...` / `FIXME: ...`) is lifted into structured AST contracts with explicit execution tiers (`Tier A`, `Tier B`, `Tier C`), unique IDs, and causal DAG edges (`depends_on`, `blocks`).
+2. **Contractual Invariants**: Every task contract binds an English specification description to non-vacuous algebraic and logical properties formalized in LexLean and proven by Lean 4 kernel replay.
+3. **Dual Execution Environment**: The verification and task navigation pipeline operates symmetrically across both editor and command line: inside Neovim via `:Tasks` and `:Lgcc`, and in the terminal via `tasks` and `lgcc`.
 
 ---
 

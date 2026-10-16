@@ -104,38 +104,93 @@ fn format_ir_bundle(target_path: &Path, res: &RouteResult) -> String {
     bundle
 }
 
+fn print_usage() {
+    eprintln!(
+        r#"lgcc: Logical Compiler, AST Extractor & Formal Task Engine
+
+Usage:
+  lgcc --lint-tasks [--json] [root]     Scan and lint in-tree Task Graph DAG
+  lgcc --fix-tasks [--apply] [root]     Synthesize structured task contracts from loose TODOs
+  lgcc --verify-specs [root]            Verify in-tree LexLean specs via prod_codegen
+  lgcc --route <file|dir> --budget <N>  Route and allocate context subgraphs
+  lgcc --skeletonize <file>             Emit interface skeleton without function bodies
+  lgcc --extract <file>                 Extract symbol AST metadata as JSON
+  lgcc --metrics <file>                 Compute compression metrics
+  lgcc --help                           Show this help message
+
+Subcommand aliases without '--' (e.g., 'lgcc tasks', 'lgcc fix', 'lgcc verify') are also supported."#
+    );
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        eprintln!(
-            "Usage: lgcc [--extract <file> | --skeletonize <file> | --graph [root] | --route <file|dir> --budget <N> [--format ir] | --metrics <file> | --lint-tasks [--json] [root] | --verify-specs]"
-        );
+        print_usage();
         std::process::exit(1);
     }
 
-    let mode = &args[1];
+    let raw_mode = &args[1];
+    let mode = raw_mode.strip_prefix("--").unwrap_or(raw_mode);
 
-    if mode == "--lint-tasks" {
-        let repo_root = if args.len() >= 3 && !args[2].starts_with('-') {
-            PathBuf::from(&args[2])
+    if mode == "help" || mode == "-h" || raw_mode == "-h" || raw_mode == "--help" {
+        print_usage();
+        return;
+    }
+
+    if mode == "lint-tasks" || mode == "tasks" || mode == "lint" {
+        let mut json = false;
+        let mut repo_root = None;
+
+        for arg in &args[2..] {
+            if arg == "--json" || arg == "-j" || arg == "json" {
+                json = true;
+            } else if !arg.starts_with('-') && repo_root.is_none() {
+                repo_root = Some(PathBuf::from(arg));
+            }
+        }
+
+        let root = repo_root.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let root = root.canonicalize().unwrap_or(root);
+        let res = TaskLinter::lint_repository(&root);
+
+        if json {
+            println!("{}", TaskLinter::to_json(&res));
         } else {
-            env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        };
+            TaskLinter::print_report(&res);
+        }
 
-        let res = TaskLinter::lint_repository(&repo_root);
-        TaskLinter::print_report(&res);
         if !res.errors.is_empty() {
             std::process::exit(1);
         }
         return;
     }
 
-    if mode == "--verify-specs" {
+    if mode == "fix-tasks" || mode == "fix" {
+        let mut apply = false;
+        let mut repo_root = None;
+
+        for arg in &args[2..] {
+            if arg == "--apply" || arg == "-a" || arg == "apply" {
+                apply = true;
+            } else if !arg.starts_with('-') && repo_root.is_none() {
+                repo_root = Some(PathBuf::from(arg));
+            }
+        }
+
+        let root = repo_root.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let root = root.canonicalize().unwrap_or(root);
+        let (_, report) = TaskLinter::fix_repository(&root, apply);
+        print!("{}", report);
+        return;
+    }
+
+    if mode == "verify-specs" || mode == "verify" {
         let repo_root = if args.len() >= 3 && !args[2].starts_with('-') {
             PathBuf::from(&args[2])
         } else {
             env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
         };
+        let repo_root = repo_root.canonicalize().unwrap_or(repo_root);
 
         let res = TaskLinter::lint_repository(&repo_root);
         if !res.errors.is_empty() {
@@ -146,7 +201,10 @@ fn main() {
             std::process::exit(1);
         }
         println!("● Machine-Checked Proof Replay Succeeded!");
-        println!("  FFI C ABI Check:  {} definitions, {} theorems verified (prod_codegen)", res.ffi_defs_verified, res.ffi_theorems_verified);
+        println!(
+            "  Specification Verification (prod_codegen): {} definitions, {} theorems verified",
+            res.ffi_defs_verified, res.ffi_theorems_verified
+        );
         println!("  Modules Verified: 4");
         println!("  PrismPM Status:   Sound (Zero unproven obligations)");
         return;

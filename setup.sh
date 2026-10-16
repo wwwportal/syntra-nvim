@@ -27,12 +27,19 @@ if [ ! -x "$SCRIPT_DIR/bin/lgcc" ]; then
     fi
 fi
 
-echo "==> [2/4] Deploying Neovim configuration to $TARGET_DIR..."
+echo "==> [2/4] Deploying Neovim configuration and CLI binaries..."
 mkdir -p "$TARGET_DIR"
 cp -r "$SCRIPT_DIR/nvim/"* "$TARGET_DIR/"
 mkdir -p "$TARGET_DIR/bin"
 cp "$SCRIPT_DIR/bin/lgcc" "$TARGET_DIR/bin/lgcc"
-chmod +x "$TARGET_DIR/bin/lgcc"
+cp "$SCRIPT_DIR/bin/tasks" "$TARGET_DIR/bin/tasks"
+chmod +x "$TARGET_DIR/bin/lgcc" "$TARGET_DIR/bin/tasks"
+
+LOCAL_BIN="$HOME/.local/bin"
+mkdir -p "$LOCAL_BIN"
+cp "$SCRIPT_DIR/bin/lgcc" "$LOCAL_BIN/lgcc"
+cp "$SCRIPT_DIR/bin/tasks" "$LOCAL_BIN/tasks"
+chmod +x "$LOCAL_BIN/lgcc" "$LOCAL_BIN/tasks"
 
 echo "==> [3/4] Checking lazy.nvim plugin manager..."
 LAZY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/nvim/lazy/lazy.nvim"
@@ -42,7 +49,7 @@ if [ ! -d "$LAZY_DIR" ]; then
 fi
 
 echo "==> [4/4] Verifying lgcc contract and task pipeline..."
-"$TARGET_DIR/bin/lgcc" --lint-tasks "$SCRIPT_DIR" > /dev/null
+"$LOCAL_BIN/lgcc" --lint-tasks "$SCRIPT_DIR" > /dev/null
 
 echo "=========================================================="
 echo "  SUCCESS: Syntra Neovim is installed and verified!       "
