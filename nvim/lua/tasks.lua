@@ -8,9 +8,13 @@
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior and in-tree source TODOs.
 -- Criterion: review: ":Tasks displays integrated agenda view with source TODOs and Taskwarrior tasks"
 
--- TODO(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
+-- TODO(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[spec-lexlean-todo-schema]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
 -- Criterion: review: ":Tasks fix or lgcc --fix-tasks interactively converts unstructured TODOs into valid in-tree contracts with user confirmation"
+
+-- TODO(spec-lexlean-todo-schema | tier:B | depends_on:[lgcc-task-synthesizer] | blocks:[prismpm-cpp-backend]): Formalize in-line source contracts as LexLean semantic specification blocks.
+-- Description: Define a formal LexLean specification schema representing in-line task contracts, including inductive types for tiers, DAG dependencies, and theorem-backed acceptance criteria.
+-- Criterion: review: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
 
 -- TODO(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks]): Package and version syntra-nvim Debian release with verified task DAG.
 -- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.
