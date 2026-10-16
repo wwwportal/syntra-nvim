@@ -1,3 +1,7 @@
+// TODO(convert-code-graph-tensors | tier:B): convert code graph to tensors
+// Description: convert code graph to tensors
+// Criterion: review: "convert code graph to tensors"
+
 #include "graph.hpp"
 
 namespace lgcc {
