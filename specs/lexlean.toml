@@ -1,12 +1,12 @@
 spec = "lexlean/project/1"
-name = "prover-engine"
+name = "syntra-engine"
 language = "1.1"
-module_prefix = "ProverEngine"
+module_prefix = "SyntraEngine"
 source_roots = ["src"]
 entrypoints = [
   "src/Foundation/Library/V1/Model.lex.tex",
   "src/Foundation/Specification/V1/TaskContract.lex.tex",
-  "src/ProverEngine.lex.tex",
+  "src/SyntraEngine.lex.tex",
 ]
 build_root = ".lexlean"
 lockfile = "lexlean.lock"

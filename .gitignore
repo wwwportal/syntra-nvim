@@ -2,6 +2,7 @@ build/
 target/
 **/target/
 *.tmp
+*.deb
 .DS_Store
 vendor/
 

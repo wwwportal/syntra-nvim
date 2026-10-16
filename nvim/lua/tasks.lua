@@ -55,19 +55,19 @@
 
 
 
--- SPEC(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks] | blocks:[spec-syntra-application-manifest]): Package and version syntra-nvim Debian release with verified task DAG.
--- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.
--- Criterion: review: "dpkg-deb -I syntra-nvim_1.0.0_all.deb succeeds and apt repository index matches"
+-- SPEC(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks] | blocks:[spec-syntra-application-manifest]): Bundle and install Syntra Neovim configuration with verified native lgcc engine.
+-- Description: Provision and link Neovim configuration into ~/.config/nvim with verified native lgcc engine binary.
+-- Criterion: review: "setup.sh provisions ~/.config/nvim and bin/lgcc executes cleanly"
 -- [lexlean:declarations]
 -- {"body":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"kind":"definition","name":"syntra_plugin_bundle","parameters":[],"result":{"kind":"bool"}}
 -- [lexlean:theorems]
 -- {"kind":"theorem","name":"syntra_plugin_bundle_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
--- SPEC(spec-syntra-application-manifest | tier:B | depends_on:[syntra-plugin-bundle] | blocks:[spec-syntra-view-model]): Formalize SyntraApplication manifest specifying package metadata, token quotas, and APT targets.
--- Description: Define formal SyntraApplication inductive structure modeling cargo manifest properties, guest token quotas, APT distribution roots, and core wasm contracts.
+-- SPEC(spec-syntra-application-manifest | tier:B | depends_on:[syntra-plugin-bundle] | blocks:[spec-syntra-view-model]): Formalize SyntraApplication manifest specifying package metadata, token quotas, and installation targets.
+-- Description: Define formal SyntraApplication inductive structure modeling package properties, context token budget limits, and script installation targets.
 -- Criterion: assert: "SyntraApplication manifest passes prismpm check with zero schema errors"
 -- [lexlean:declarations]
--- {"constructors":[{"fields":[],"name":"AptRepository"},{"fields":[],"name":"NeovimPlugin"}],"kind":"inductive","name":"DistributionTarget","parameters":[],"type_parameters":[]},{"fields":[{"name":"name","type":{"kind":"string"}},{"name":"version","type":{"kind":"string"}},{"name":"maxTokenBudget","type":{"kind":"nat"}},{"name":"target","type":{"arguments":[],"kind":"named","member":{"name":"DistributionTarget"}}}],"kind":"structure","name":"SyntraApplication","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"kind":"definition","name":"syntra_application_manifest","parameters":[],"result":{"kind":"bool"}}
+-- {"constructors":[{"fields":[],"name":"ScriptInstaller"},{"fields":[],"name":"NeovimPlugin"}],"kind":"inductive","name":"DistributionTarget","parameters":[],"type_parameters":[]},{"fields":[{"name":"name","type":{"kind":"string"}},{"name":"version","type":{"kind":"string"}},{"name":"maxTokenBudget","type":{"kind":"nat"}},{"name":"target","type":{"arguments":[],"kind":"named","member":{"name":"DistributionTarget"}}}],"kind":"structure","name":"SyntraApplication","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"kind":"definition","name":"syntra_application_manifest","parameters":[],"result":{"kind":"bool"}}
 -- [lexlean:theorems]
 -- {"kind":"theorem","name":"syntra_application_manifest_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_application_manifest"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 

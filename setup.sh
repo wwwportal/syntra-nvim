@@ -1,31 +1,51 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# setup.sh: 1-Line Installer for Syntra Neovim
-# Registers the Syntra APT repository and runs 'sudo apt install syntra-nvim'
+# setup.sh: Direct Installer for Syntra Neovim
+# Provisions configuration to ~/.config/nvim and links the native lgcc compiler.
 #
 # Usage:
-#   curl -fsSL https://wwwportal.github.io/syntra-nvim/setup.sh | sudo bash
+#   ./setup.sh
 # ==============================================================================
 
 set -euo pipefail
 
-echo "=========================================================="
-echo "          Syntra Neovim APT Repository Setup              "
-echo "=========================================================="
-
-REPO_URL="https://wwwportal.github.io/syntra-nvim"
-LIST_FILE="/etc/apt/sources.list.d/syntra.list"
-
-echo "==> [1/3] Adding Syntra repository to APT sources..."
-echo "deb [trusted=yes] $REPO_URL ./" | tee "$LIST_FILE" > /dev/null
-
-echo "==> [2/3] Updating package index..."
-apt-get update -qq
-
-echo "==> [3/3] Installing syntra-nvim via APT..."
-apt-get install -y syntra-nvim
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
 
 echo "=========================================================="
-echo "  SUCCESS: Syntra Neovim is installed and ready!          "
+echo "          Syntra Neovim Direct Setup                      "
+echo "=========================================================="
+
+echo "==> [1/4] Ensuring native lgcc compiler binary..."
+if [ ! -x "$SCRIPT_DIR/bin/lgcc" ]; then
+    if command -v cargo &>/dev/null; then
+        echo "--> Building lgcc via cargo..."
+        make -C "$SCRIPT_DIR" all
+    else
+        echo "ERROR: bin/lgcc is missing and cargo is not installed." >&2
+        exit 1
+    fi
+fi
+
+echo "==> [2/4] Deploying Neovim configuration to $TARGET_DIR..."
+mkdir -p "$TARGET_DIR"
+cp -r "$SCRIPT_DIR/nvim/"* "$TARGET_DIR/"
+mkdir -p "$TARGET_DIR/bin"
+cp "$SCRIPT_DIR/bin/lgcc" "$TARGET_DIR/bin/lgcc"
+chmod +x "$TARGET_DIR/bin/lgcc"
+
+echo "==> [3/4] Checking lazy.nvim plugin manager..."
+LAZY_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/nvim/lazy/lazy.nvim"
+if [ ! -d "$LAZY_DIR" ]; then
+    echo "--> Bootstrapping lazy.nvim..."
+    git clone --filter=blob:none https://github.com/folke/lazy.nvim.git --branch=stable "$LAZY_DIR" 2>/dev/null || true
+fi
+
+echo "==> [4/4] Verifying lgcc contract and task pipeline..."
+"$TARGET_DIR/bin/lgcc" --lint-tasks "$SCRIPT_DIR" > /dev/null
+
+echo "=========================================================="
+echo "  SUCCESS: Syntra Neovim is installed and verified!       "
 echo "  Run 'nvim' to begin.                                    "
 echo "=========================================================="
+
