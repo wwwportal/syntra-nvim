@@ -49,6 +49,7 @@ Usage:
 
 Commands:
   specs, specs list [dir]        Scan in-tree task DAG and display tiered report (Tier A/B/C)
+  specs graph [--reverse] [--all] [dir] Render interactive/ASCII Code & Spec DAG
   specs informal [dir]           List informal TODO/FIXME tasks needing formal Lean 4 specification
   specs draft [dir]              List draft specifications with open proof obligations
   specs verified [dir]           List verified Lean 4 specification tasks
@@ -78,6 +79,10 @@ case "$CMD" in
         shift || true
         TARGET_DIR="${1:-.}"
         exec "$LGCC_BIN" --lint-tasks "$TARGET_DIR"
+        ;;
+    graph|--graph|dag|--dag|tree|--tree)
+        shift || true
+        exec "$LGCC_BIN" --graph "$@"
         ;;
     informal|--informal|unformalized|--unformalized)
         shift || true

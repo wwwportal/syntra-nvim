@@ -292,6 +292,13 @@ local function setup_qf_keymaps(origin_win)
   vim.keymap.set("n", "o", function()
     jump_in_origin(true)
   end, { buffer = qf_buf, silent = true, noremap = true, desc = "Jump to task and close Tasks split" })
+
+  -- 'g' toggles into the interactive visual DAG
+  vim.keymap.set("n", "g", function()
+    vim.cmd("cclose")
+    local repo_dir = find_lint_tasks()
+    M.show_visual_dag(repo_dir, origin_win)
+  end, { buffer = qf_buf, silent = true, noremap = true, desc = "Toggle Visual DAG view" })
 end
 
 --- Show in-tree Source-First Task Graph
@@ -374,6 +381,281 @@ local function show_repo_tasks(repo_path, origin_win, target_task_id)
   vim.api.nvim_echo({
     { string.format("● Loaded %d in-tree specifications for %s (<CR> to jump in split, o to jump & close, q to close)", #tasks, repo_name), "ModeMsg" }
   }, false, {})
+end
+
+--- Show interactive Visual DAG representation
+--- @param repo_path? string
+--- @param origin_win? number
+--- @param opts? { reverse?: boolean, include_all?: boolean, filter_informal?: boolean }
+function M.show_visual_dag(repo_path, origin_win, opts)
+  origin_win = origin_win or vim.api.nvim_get_current_win()
+  opts = opts or {}
+  local reverse = opts.reverse or false
+  local include_all = opts.include_all or false
+  local filter_informal = opts.filter_informal or false
+
+  local lgcc = get_lgcc_bin()
+  if not lgcc or vim.fn.executable(lgcc) ~= 1 then
+    vim.notify("specs: Native lgcc binary not found", vim.log.levels.ERROR)
+    return
+  end
+
+  local target_dir = repo_path and (vim.fs.root(repo_path, ".git") or repo_path) or (vim.fs.root(vim.fn.getcwd(), ".git") or vim.fn.getcwd())
+
+  -- 1. Get JSON graph metadata for node previews
+  local json_args = { lgcc, "--graph", "--json" }
+  if include_all then table.insert(json_args, "--all") end
+  table.insert(json_args, target_dir)
+
+  local json_out = vim.fn.system(json_args)
+  local nodes_data = {}
+  if vim.v.shell_error == 0 and json_out and json_out ~= "" then
+    local ok, parsed = pcall(vim.fn.json_decode, json_out)
+    if ok and parsed and parsed.nodes then
+      nodes_data = parsed.nodes
+    end
+  end
+
+  -- 2. Get ASCII graph representation
+  local tree_args = { lgcc, "--graph" }
+  if reverse then table.insert(tree_args, "--reverse") end
+  if include_all then table.insert(tree_args, "--all") end
+  table.insert(tree_args, target_dir)
+
+  local tree_out = vim.fn.system(tree_args)
+  if vim.v.shell_error ~= 0 or not tree_out or tree_out == "" then
+    vim.notify("specs: Failed to render visual DAG from lgcc", vim.log.levels.ERROR)
+    return
+  end
+
+  -- Reuse or open split buffer
+  local buf_name = "[Specs DAG]"
+  local existing_buf = nil
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(b) and vim.api.nvim_buf_get_name(b):match("%[Specs DAG%]$") then
+      existing_buf = b
+      break
+    end
+  end
+
+  local win = nil
+  if existing_buf then
+    for _, w in ipairs(vim.api.nvim_list_wins()) do
+      if vim.api.nvim_win_get_buf(w) == existing_buf then
+        win = w
+        break
+      end
+    end
+  end
+
+  if not win or not vim.api.nvim_win_is_valid(win) then
+    vim.cmd("botright 16new")
+    win = vim.api.nvim_get_current_win()
+  else
+    vim.api.nvim_set_current_win(win)
+  end
+
+  local buf = vim.api.nvim_win_get_buf(win)
+  pcall(vim.api.nvim_buf_set_name, buf, buf_name)
+  vim.bo[buf].buftype = "nofile"
+  vim.bo[buf].bufhidden = "wipe"
+  vim.bo[buf].swapfile = false
+  vim.wo[win].cursorline = true
+  vim.wo[win].wrap = false
+
+  local raw_lines = vim.split(tree_out, "\n")
+  local display_lines = {}
+  local line_meta = {}
+
+  -- Header
+  local flow_label = reverse and "Upstream Prerequisites (depends_on)" or "Downstream Impact (blocks)"
+  local filter_label = include_all and "All (Specs + Code)" or (filter_informal and "Informal Only" or "Specs Only")
+  table.insert(display_lines, string.format("─┤ SPECS DAG: %s | Filter: %s | <CR>/Click: Jump | r: Reverse | f: Filter | K: Info | q: Close ├─", flow_label, filter_label))
+  table.insert(line_meta, { is_header = true })
+
+  for _, line in ipairs(raw_lines) do
+    if line ~= "" and not line:match("^===") and not line:match("^Specification & Code Graph") and not line:match("^Reverse Specification") then
+      local skip = false
+      if filter_informal and not line:match("%[INFORMAL%]") then
+        skip = true
+      end
+
+      if not skip then
+        table.insert(display_lines, line)
+        local file, lnum = line:match("%((.-):(%d+)%)")
+        local id = line:match("%] ([%w%-_%.]+)")
+        if file and lnum then
+          local full_file = (file:sub(1, 1) == "/") and file or (target_dir .. "/" .. file)
+          local node_info = id and nodes_data[id] or nil
+          table.insert(line_meta, {
+            id = id,
+            file = full_file,
+            line = tonumber(lnum),
+            node = node_info,
+          })
+        else
+          table.insert(line_meta, { is_separator = true })
+        end
+      end
+    end
+  end
+
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, display_lines)
+  vim.bo[buf].modifiable = false
+
+  -- Syntax highlights for badges
+  vim.cmd([[
+    syntax match SpecsDagVerified /\[VERIFIED\]/
+    syntax match SpecsDagDraft /\[DRAFT\]/
+    syntax match SpecsDagInformal /\[INFORMAL\]/
+    syntax match SpecsDagCode /\[CODE\]/
+    syntax match SpecsDagHeader /^─┤.*├─/
+    syntax match SpecsDagBranch /[├└│─●]/
+    syntax match SpecsDagLocation /(.*:[0-9]\+)/
+
+    highlight default link SpecsDagVerified DiagnosticOk
+    highlight default link SpecsDagDraft DiagnosticWarn
+    highlight default link SpecsDagInformal DiagnosticInfo
+    highlight default link SpecsDagCode Comment
+    highlight default link SpecsDagHeader Title
+    highlight default link SpecsDagBranch Special
+    highlight default link SpecsDagLocation LineNr
+  ]])
+
+  -- Set up interactive keymaps
+  local function jump_to_node(close_dag)
+    local cur_line = vim.fn.line(".")
+    local meta = line_meta[cur_line]
+    if not meta or not meta.file or not meta.line then
+      return
+    end
+
+    if close_dag then
+      pcall(vim.api.nvim_win_close, win, true)
+    end
+
+    if vim.api.nvim_win_is_valid(origin_win) then
+      vim.api.nvim_set_current_win(origin_win)
+    end
+
+    vim.cmd("edit " .. vim.fn.fnameescape(meta.file))
+    pcall(vim.api.nvim_win_set_cursor, origin_win, { meta.line, 0 })
+    vim.cmd("normal! zz")
+  end
+
+  -- Enter jumps into code split
+  vim.keymap.set("n", "<CR>", function() jump_to_node(false) end, { buffer = buf, silent = true, noremap = true, desc = "Jump to spec/function" })
+  vim.keymap.set("n", "<2-LeftMouse>", function() jump_to_node(false) end, { buffer = buf, silent = true, noremap = true, desc = "Jump to spec/function" })
+  vim.keymap.set("n", "<LeftMouse>", function()
+    local mouse_pos = vim.fn.getmousepos()
+    if mouse_pos and mouse_pos.winid == win then
+      pcall(vim.api.nvim_win_set_cursor, win, { mouse_pos.line, mouse_pos.column - 1 })
+    end
+  end, { buffer = buf, silent = true, noremap = true })
+
+  -- 'o' jumps and closes
+  vim.keymap.set("n", "o", function() jump_to_node(true) end, { buffer = buf, silent = true, noremap = true, desc = "Jump and close DAG" })
+
+  -- 'r' flips direction (Forward <-> Reverse)
+  vim.keymap.set("n", "r", function()
+    M.show_visual_dag(target_dir, origin_win, { reverse = not reverse, include_all = include_all, filter_informal = filter_informal })
+  end, { buffer = buf, silent = true, noremap = true, desc = "Toggle Downstream / Upstream direction" })
+
+  -- 'f' cycles filter (Specs Only -> All with Code -> Informal Only -> Specs Only)
+  vim.keymap.set("n", "f", function()
+    if not include_all and not filter_informal then
+      M.show_visual_dag(target_dir, origin_win, { reverse = reverse, include_all = true, filter_informal = false })
+    elseif include_all then
+      M.show_visual_dag(target_dir, origin_win, { reverse = reverse, include_all = false, filter_informal = true })
+    else
+      M.show_visual_dag(target_dir, origin_win, { reverse = reverse, include_all = false, filter_informal = false })
+    end
+  end, { buffer = buf, silent = true, noremap = true, desc = "Cycle Filter (Specs / All / Informal)" })
+
+  -- 'K' / '<Space>' previews node details in float
+  local function show_preview()
+    local cur_line = vim.fn.line(".")
+    local meta = line_meta[cur_line]
+    if not meta or not meta.node then
+      if meta and meta.file then
+        vim.notify(string.format("%s:%d", meta.file, meta.line), vim.log.levels.INFO)
+      end
+      return
+    end
+
+    local n = meta.node
+    local preview_lines = {
+      string.format("Node: %s  [%s] (Tier %s)", n.id, n.maturity, n.tier or "-"),
+      string.format("File: %s:%d", n.file, n.line),
+      string.format("Kind: %s", n.kind),
+      string.rep("─", 60),
+    }
+
+    if n.description and n.description ~= "" then
+      table.insert(preview_lines, "Description:")
+      table.insert(preview_lines, "  " .. n.description)
+    end
+
+    if n.criterion and n.criterion ~= "" then
+      table.insert(preview_lines, "Criterion:")
+      table.insert(preview_lines, "  " .. n.criterion)
+    end
+
+    if n.unproven_goals and #n.unproven_goals > 0 then
+      table.insert(preview_lines, "Proof Obligations (Lean 4):")
+      for _, goal in ipairs(n.unproven_goals) do
+        table.insert(preview_lines, "  ⊢ " .. goal)
+      end
+    end
+
+    if n.depends_on and #n.depends_on > 0 then
+      table.insert(preview_lines, string.format("Depends on: [%s]", table.concat(n.depends_on, ", ")))
+    end
+
+    if n.blocks and #n.blocks > 0 then
+      table.insert(preview_lines, string.format("Blocks: [%s]", table.concat(n.blocks, ", ")))
+    end
+
+    local pbuf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, preview_lines)
+    vim.bo[pbuf].buftype = "nofile"
+    vim.bo[pbuf].bufhidden = "wipe"
+
+    local pwin = vim.api.nvim_open_win(pbuf, true, {
+      relative = "cursor",
+      row = 1,
+      col = 0,
+      width = 65,
+      height = math.min(15, #preview_lines),
+      style = "minimal",
+      border = "rounded",
+    })
+
+    vim.keymap.set("n", "q", function() pcall(vim.api.nvim_win_close, pwin, true) end, { buffer = pbuf, silent = true })
+    vim.keymap.set("n", "<Esc>", function() pcall(vim.api.nvim_win_close, pwin, true) end, { buffer = pbuf, silent = true })
+  end
+
+  vim.keymap.set("n", "K", show_preview, { buffer = buf, silent = true, noremap = true, desc = "Preview spec details" })
+  vim.keymap.set("n", "<Space>", show_preview, { buffer = buf, silent = true, noremap = true, desc = "Preview spec details" })
+
+  -- 'q' / '<Esc>' closes DAG
+  vim.keymap.set("n", "q", function()
+    pcall(vim.api.nvim_win_close, win, true)
+    if vim.api.nvim_win_is_valid(origin_win) then
+      vim.api.nvim_set_current_win(origin_win)
+    end
+  end, { buffer = buf, silent = true, noremap = true, desc = "Close DAG view" })
+
+  vim.keymap.set("n", "<Esc>", function()
+    pcall(vim.api.nvim_win_close, win, true)
+    if vim.api.nvim_win_is_valid(origin_win) then
+      vim.api.nvim_set_current_win(origin_win)
+    end
+  end, { buffer = buf, silent = true, noremap = true, desc = "Close DAG view" })
+
+  -- Position cursor on first node line (line 2)
+  pcall(vim.api.nvim_win_set_cursor, win, { 2, 0 })
 end
 
 --- Parse the argument string for `:Tasks add`
@@ -1008,7 +1290,7 @@ function M.fix_tasks(origin_win)
 end
 
 --- Main entry point for :Specs (and :Tasks) command
---- @param args? string "prover" | "syn" | "syn-nvim" | "add ..." | "fix" | nil
+--- @param args? string "prover" | "syn" | "syn-nvim" | "graph" | "add ..." | "fix" | nil
 function M.tasks(args)
   local origin_win = vim.api.nvim_get_current_win()
   args = args and vim.trim(args) or ""
@@ -1021,6 +1303,18 @@ function M.tasks(args)
 
   if args == "fix" or vim.startswith(args, "fix ") then
     M.fix_tasks(origin_win)
+    return
+  end
+
+  if args == "graph" or args == "dag" or args == "tree" or vim.startswith(args, "graph ") or vim.startswith(args, "dag ") or vim.startswith(args, "tree ") then
+    local sub_args = args:gsub("^[a-z]+%s*", "")
+    local is_rev = sub_args:match("%-%-reverse") or sub_args:match("%-r") or sub_args:match("reverse")
+    local is_all = sub_args:match("%-%-all") or sub_args:match("%-a") or sub_args:match("all")
+    local clean_target = sub_args:gsub("%-%-[%w%-_]+", ""):gsub("%-[%w%-_]+", ""):gsub("reverse", ""):gsub("all", "")
+    clean_target = vim.trim(clean_target)
+    local target = clean_target ~= "" and clean_target:lower() or nil
+    local repo_dir = find_lint_tasks(target) or vim.fn.getcwd()
+    M.show_visual_dag(repo_dir, origin_win, { reverse = is_rev ~= nil, include_all = is_all ~= nil })
     return
   end
 
@@ -1041,14 +1335,16 @@ end
 
 local function task_complete(arglead, cmdline)
   local parts = vim.split(vim.trim(cmdline), "%s+")
+  local subcmds = { "graph", "dag", "tree", "add", "fix", "prover", "syn", "syn-nvim" }
   if #parts == 2 and not cmdline:match("%s$") then
-    local subcmds = { "add", "fix", "prover", "syn", "syn-nvim" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
   elseif (#parts == 2 and cmdline:match("%s$") and parts[2] == "add") or (#parts == 3 and parts[2] == "add") then
     local add_prefixes = { "TODO:", "FIXME:", "SPEC:", "spec" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, add_prefixes)
+  elseif (#parts >= 2 and (parts[2] == "graph" or parts[2] == "dag" or parts[2] == "tree")) then
+    local graph_opts = { "--reverse", "--all", "prover", "syn", "syn-nvim" }
+    return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, graph_opts)
   end
-  local subcmds = { "add", "fix", "prover", "syn", "syn-nvim" }
   return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
 end
 

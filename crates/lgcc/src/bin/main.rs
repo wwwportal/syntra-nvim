@@ -1,6 +1,6 @@
 use lgcc::ast::extractor::Extractor;
 use lgcc::ast::skeletonizer::Skeletonizer;
-use lgcc::graph::graph::GraphBuilder;
+use lgcc::graph::graph::{GraphBuilder, UnifiedGraph};
 use lgcc::router::{ContextRouter, RouteResult};
 use lgcc::spec::linter::TaskLinter;
 use std::env;
@@ -108,6 +108,7 @@ fn print_usage() {
 
 Usage:
   lgcc --lint-tasks [--json] [root]     Scan and lint in-tree Task Graph DAG
+  lgcc --graph [--json] [--all] [--reverse] [root]  Render interactive/ASCII Code & Spec DAG
   lgcc --fix-tasks [--apply] [root]     Synthesize structured task contracts from loose TODOs
   lgcc --verify-specs [root]            Verify in-tree LexLean specs via prod_codegen
   lgcc --route <file|dir> --budget <N>  Route and allocate context subgraphs
@@ -116,7 +117,7 @@ Usage:
   lgcc --metrics <file>                 Compute compression metrics
   lgcc --help                           Show this help message
 
-Subcommand aliases without '--' (e.g., 'lgcc tasks', 'lgcc fix', 'lgcc verify') are also supported."#
+Subcommand aliases without '--' (e.g., 'lgcc tasks', 'lgcc graph', 'lgcc fix', 'lgcc verify') are also supported."#
     );
 }
 
@@ -243,6 +244,37 @@ fn main() {
         );
         println!("  Modules Verified:      4");
         println!("  PrismPM Status:        Sound (Zero unproven obligations)");
+        return;
+    }
+
+    if mode == "graph" || mode == "--graph" || mode == "dag" || mode == "--dag" || mode == "tree" || mode == "--tree" {
+        let mut json = false;
+        let mut reverse = false;
+        let mut include_all = false;
+        let mut repo_root = None;
+
+        for arg in &args[2..] {
+            if arg == "--json" || arg == "-j" || arg == "json" {
+                json = true;
+            } else if arg == "--reverse" || arg == "-r" || arg == "reverse" || arg == "--upstream" {
+                reverse = true;
+            } else if arg == "--all" || arg == "-a" || arg == "all" {
+                include_all = true;
+            } else if !arg.starts_with('-') && repo_root.is_none() {
+                repo_root = Some(PathBuf::from(arg));
+            }
+        }
+
+        let root = repo_root.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let root = root.canonicalize().unwrap_or(root);
+
+        let ug = UnifiedGraph::build(&root, include_all);
+
+        if json {
+            println!("{}", ug.to_json());
+        } else {
+            print!("{}", ug.render_ascii_dag(reverse));
+        }
         return;
     }
 
