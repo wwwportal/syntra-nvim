@@ -8,13 +8,13 @@ namespace lgcc {
 // Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
 // Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
 
-// TODO(prismpm-cpp-backend | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-lexlean-verifier]): Formulate native C++20 code extraction backend for prismpm.
-// Description: Design and implement C++20 codegen backend for prismpm/prod-codegen translating LexLean inductive specifications, records, and pattern matches into C++20 structs, std::variant, std::optional, and concepts instead of Rust.
-// Criterion: review: "prismpm CLI or test suite successfully extracts LexLean definitions into valid C++20 headers and structs"
+// TODO(prismpm-rust-bridge | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
+// Description: Consume verified Rust crates emitted by prismpm through its C ABI layer (prod_codegen::CBindings / extern "C") to expose contract verification functions and invariants directly to C++.
+// Criterion: review: "cargo build produces static/dynamic library with C headers linking cleanly into C++ test runner"
 
-// TODO(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-cpp-backend]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
-// Description: Connect lgcc AST extractor and IR compiler with LexLean C++-generated specifications to verify formal contracts and invariants at compile and lint time.
-// Criterion: review: "lgcc validates LexLean-extracted C++ contract assertions during static analysis passes"
+// TODO(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-rust-bridge]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
+// Description: Connect lgcc AST extractor and IR compiler with prismpm Rust/C FFI verifier to validate formal contracts and invariants at compile and lint time.
+// Criterion: review: "lgcc validates LexLean-extracted contract assertions via FFI during static analysis passes"
 
 struct ExtractedModule {
     fs::path filepath;

@@ -12,7 +12,7 @@
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
 -- Criterion: review: ":Tasks fix or lgcc --fix-tasks interactively converts unstructured TODOs into valid in-tree contracts with user confirmation"
 
--- TODO(spec-lexlean-todo-schema | tier:B | depends_on:[lgcc-task-synthesizer] | blocks:[prismpm-cpp-backend]): Formalize in-line source contracts as LexLean semantic specification blocks.
+-- TODO(spec-lexlean-todo-schema | tier:B | depends_on:[lgcc-task-synthesizer] | blocks:[prismpm-rust-bridge]): Formalize in-line source contracts as LexLean semantic specification blocks.
 -- Description: Define a formal LexLean specification schema representing in-line task contracts, including inductive types for tiers, DAG dependencies, and theorem-backed acceptance criteria.
 -- Criterion: review: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
 
