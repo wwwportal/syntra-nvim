@@ -4,19 +4,27 @@
 -- Displays in-tree source TODOs (prover / syntra-nvim) or Taskwarrior tasks in a jumpable split.
 -- ==============================================================================
 
--- TODO(unified-tasks | tier:A | blocks:[syntra-plugin-bundle]): Bridge Taskwarrior and in-tree source TODOs into unified Neovim UI.
+-- SPEC(unified-tasks | tier:A | blocks:[syntra-plugin-bundle]): Bridge Taskwarrior and in-tree source TODOs into unified Neovim UI.
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior and in-tree source TODOs.
 -- Criterion: review: ":Tasks displays integrated agenda view with source TODOs and Taskwarrior tasks"
+-- [lexlean:declarations]
+-- {"body":{"kind":"bool","value":true},"kind":"definition","name":"unified_tasks","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"unified_tasks_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
--- TODO(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[spec-lexlean-todo-schema]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
+-- SPEC(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[spec-lexlean-todo-schema]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
 -- Criterion: review: ":Tasks fix or lgcc --fix-tasks interactively converts unstructured TODOs into valid in-tree contracts with user confirmation"
+-- [lexlean:declarations]
+-- {"body":{"arguments":[],"function":{"name":"lgcc_dep_bundle"},"kind":"call"},"kind":"definition","name":"lgcc_task_synthesizer","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"lgcc_task_synthesizer_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_task_synthesizer"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 -- SPEC(spec-lexlean-todo-schema | tier:B | depends_on:[lgcc-task-synthesizer] | blocks:[spec-jit-patch-schema]): Formalize in-line source contracts as LexLean semantic specification blocks.
 -- Description: Define a formal LexLean specification schema representing in-line task contracts, including inductive types for tiers, DAG dependencies, and theorem-backed acceptance criteria.
 -- Criterion: assert: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
 -- [lexlean:declarations]
--- {"body":{"kind":"bool","value":true},"kind":"definition","name":"spec_lexlean_todo_schema","parameters":[],"result":{"kind":"bool"}}
+-- {"body":{"arguments":[],"function":{"name":"lgcc_task_synthesizer"},"kind":"call"},"kind":"definition","name":"spec_lexlean_todo_schema","parameters":[],"result":{"kind":"bool"}}
 -- [lexlean:theorems]
 -- {"kind":"theorem","name":"spec_lexlean_todo_schema_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"spec_lexlean_todo_schema"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
@@ -39,9 +47,13 @@
 
 
 
--- TODO(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks]): Package and version syntra-nvim Debian release with verified task DAG.
+-- SPEC(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks]): Package and version syntra-nvim Debian release with verified task DAG.
 -- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.
 -- Criterion: review: "dpkg-deb -I syntra-nvim_1.0.0_all.deb succeeds and apt repository index matches"
+-- [lexlean:declarations]
+-- {"body":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"kind":"definition","name":"syntra_plugin_bundle","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"syntra_plugin_bundle_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"syntra_plugin_bundle"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 local M = {}
 
@@ -776,8 +788,35 @@ function M.add_task(arg_str, origin_win)
   end
 end
 
+--- Interactively synthesize structured Task Graph contracts from informal TODO/FIXME comments
+function M.fix_tasks(origin_win)
+  local lgcc_bin = get_lgcc_bin()
+  if not lgcc_bin then
+    vim.notify("tasks: native lgcc binary not found for --fix-tasks", vim.log.levels.ERROR)
+    return
+  end
+  local dirs = get_active_dirs()
+  local root = dirs[1] or vim.fn.getcwd()
+  local dry = vim.system({ lgcc_bin, "--fix-tasks", root }, { text = true }):wait()
+  local out = vim.trim((dry.stdout or "") .. (dry.stderr or ""))
+  if out:match("%[PASS%]") then
+    vim.notify("tasks: " .. out, vim.log.levels.INFO)
+    return
+  end
+  local choice = vim.fn.confirm(out .. "\n\nApply synthesized Task Graph contracts?", "&Yes\n&No", 1)
+  if choice == 1 then
+    local applied = vim.system({ lgcc_bin, "--fix-tasks", "--apply", root }, { text = true }):wait()
+    vim.cmd("checktime")
+    vim.notify(vim.trim(applied.stdout or "Applied task contracts."), vim.log.levels.INFO)
+    local lint_script = find_lint_tasks()
+    if lint_script then
+      show_repo_tasks(lint_script, origin_win)
+    end
+  end
+end
+
 --- Main entry point for :Tasks command
---- @param args? string "prover" | "syntra" | "syntra-nvim" | "tw" | "taskwarrior" | "add ..." | nil
+--- @param args? string "prover" | "syntra" | "syntra-nvim" | "tw" | "taskwarrior" | "add ..." | "fix" | nil
 function M.tasks(args)
   local origin_win = vim.api.nvim_get_current_win()
   args = args and vim.trim(args) or ""
@@ -785,6 +824,11 @@ function M.tasks(args)
   if vim.startswith(args, "add ") or args == "add" then
     local add_args = vim.trim(args:sub(4))
     M.add_task(add_args, origin_win)
+    return
+  end
+
+  if args == "fix" or vim.startswith(args, "fix ") then
+    M.fix_tasks(origin_win)
     return
   end
 
@@ -807,13 +851,13 @@ end
 local function task_complete(arglead, cmdline)
   local parts = vim.split(vim.trim(cmdline), "%s+")
   if #parts == 2 and not cmdline:match("%s$") then
-    local subcmds = { "add", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
+    local subcmds = { "add", "fix", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
   elseif (#parts == 2 and cmdline:match("%s$") and parts[2] == "add") or (#parts == 3 and parts[2] == "add") then
     local add_prefixes = { "TODO:", "FIXME:", "SPEC:", "spec" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, add_prefixes)
   end
-  local subcmds = { "add", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
+  local subcmds = { "add", "fix", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
   return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
 end
 

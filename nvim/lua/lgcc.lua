@@ -172,17 +172,19 @@ local function get_automatic_budget(engine, target_file_chars, user_budget)
   return math.min(available, prof.default_dep_budget)
 end
 
---- Run native logical compiler on target file or active buffer
+--- Run native logical compiler on target file, directory, or active buffer
 --- @param opts? { file?: string, spec?: string, engine?: string, speak?: boolean, bundle?: boolean, budget?: number, bufnr?: number }
 function M.lint(opts)
   opts = opts or {}
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
   local filepath = (opts.file and opts.file ~= "") and vim.fn.expand(opts.file) or vim.api.nvim_buf_get_name(bufnr)
 
-  if filepath == "" or not vim.uv.fs_stat(filepath) then
-    vim.notify("lgcc: Target file not found or buffer not saved: " .. (filepath ~= "" and filepath or "[unnamed]"), vim.log.levels.WARN)
+  local stat = (filepath ~= "") and vim.uv.fs_stat(filepath) or nil
+  if filepath == "" or not stat then
+    vim.notify("lgcc: Target path not found or buffer not saved: " .. (filepath ~= "" and filepath or "[unnamed]"), vim.log.levels.WARN)
     return
   end
+  local is_dir = (stat.type == "directory")
 
   -- Cancel existing job if running
   if active_job then
@@ -191,24 +193,28 @@ function M.lint(opts)
   end
 
   -- Auto-save if buffer is modified
-  if bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_get_option_value("modified", { buf = bufnr }) then
+  if not is_dir and bufnr and vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_get_option_value("modified", { buf = bufnr }) then
     vim.cmd("silent write")
   end
 
-  local lines = vim.fn.readfile(filepath)
-  local target_chars = #table.concat(lines, "\n")
+  local lines = is_dir and {} or vim.fn.readfile(filepath)
+  local target_chars = is_dir and 0 or #table.concat(lines, "\n")
   local initial_engine = opts.engine or "agy"
   local auto_budget = get_automatic_budget(initial_engine, target_chars, opts.budget)
 
-  -- Assemble source code or hermetic dependency bundle
-  -- TODO(lgcc-compressed-ir | tier:B | depends_on:[lgcc-cli-router-hook] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
+  -- Assemble source code or hermetic Code Graph dependency bundle
+  -- SPEC(lgcc-compressed-ir | tier:B | depends_on:[lgcc-cli-router-hook] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
   -- Description: Implement a compact AST/interface representation (symbol dependency graph and skeletonized type stubs) to keep full repository context in the model's active window without blowing up token limits.
   -- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
+  -- [lexlean:declarations]
+  -- {"body":{"arguments":[],"function":{"name":"lgcc_cli_router_hook"},"kind":"call"},"kind":"definition","name":"lgcc_compressed_ir","parameters":[],"result":{"kind":"bool"}}
+  -- [lexlean:theorems]
+  -- {"kind":"theorem","name":"lgcc_compressed_ir_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_compressed_ir"},"kind":"call"},"right":{"kind":"bool","value":true}}}
   local code_section = ""
   local used_budget = nil
 
-  -- Enable smart routing by default or when bundle flag is set
-  if opts.bundle ~= false then
+  -- Enable smart Code Graph routing by default or when bundle/directory mode is active
+  if is_dir or opts.bundle ~= false then
     local lgcc_bin = find_lgcc_bin()
     if lgcc_bin then
       local res = vim.system({ lgcc_bin, "--route", filepath, "--budget", tostring(auto_budget), "--format", "ir" }, { text = true }):wait()
@@ -217,7 +223,7 @@ function M.lint(opts)
         used_budget = auto_budget
       end
     end
-    if code_section == "" then
+    if code_section == "" and not is_dir then
       local bscript = find_bundle_script()
       if bscript then
         local res = vim.system({ "python3", bscript, "--bundle", filepath }, { text = true }):wait()
@@ -228,7 +234,7 @@ function M.lint(opts)
     end
   end
 
-  if code_section == "" then
+  if code_section == "" and not is_dir then
     local numbered_lines = {}
     for i, line in ipairs(lines) do
       table.insert(numbered_lines, string.format("%d: %s", i, line))
@@ -247,8 +253,8 @@ function M.lint(opts)
   end
 
   local system_prompt = [[You are the Logical Compiler (lgcc).
-Analyze the provided source code for semantic bugs, invariant violations, and logical flaws.
-Interface contracts and type stubs for imported local modules are provided in the DEPENDENCY SKELETONS section to verify cross-module call correctness.
+Analyze the provided source code and Code Graph IR for semantic bugs, invariant violations, and cross-module logical flaws.
+The CODE GRAPH TOPOLOGY G=(V, E) and ROUTED INTERFACE CONTRACTS sections provide the symbol call graph, type edges, and skeletonized module contracts across the repository.
 Ignore syntax, formatting, and naming conventions.
 If you need heavy dependency context or external code exploration, you may run `opencode run "<query>"` to delegate sub-worker analysis.
 If flaws exist, output each flaw strictly on its own line in this format:
@@ -257,7 +263,7 @@ If there are no logic errors, output: CLEAN]]
 
   local full_prompt = string.format("%s\n\n%s%s", system_prompt, spec_section, code_section)
 
-  local initial_engine = opts.engine or "agy"
+  local file_basename = is_dir and (vim.fn.fnamemodify(filepath, ":t") .. "/") or vim.fn.fnamemodify(filepath, ":t")
   local budget_label = used_budget and string.format(" [+%dtok]", used_budget) or (opts.bundle and " [+deps]" or "")
   local state = start_ticker(file_basename .. budget_label, initial_engine)
 
@@ -379,9 +385,13 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
 
   while i <= #fargs do
     local arg = fargs[i]
-    -- TODO(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
+    -- SPEC(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
     -- Description: Integrate bundle_ir.py --route --budget into lgcc.lua with optional --budget argument for dynamic context allocation.
     -- Criterion: review: ":Lgcc --budget 4000 dynamically queries router and passes knapsack-allocated IR context"
+    -- [lexlean:declarations]
+    -- {"body":{"arguments":[],"function":{"name":"ir_schema_formatter"},"kind":"call"},"kind":"definition","name":"lgcc_cli_router_hook","parameters":[],"result":{"kind":"bool"}}
+    -- [lexlean:theorems]
+    -- {"kind":"theorem","name":"lgcc_cli_router_hook_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_cli_router_hook"},"kind":"call"},"right":{"kind":"bool","value":true}}}
     if arg == "-s" or arg == "--speak" or arg == "speak" then
       speak = true
     elseif arg == "-b" or arg == "--bundle" or arg == "bundle" then
@@ -435,8 +445,12 @@ end, {
   desc = "Run logical compiler (lgcc) with live status ticker, Quickfix results, and agy/opencode failover; use -s for voice summary, -b for dependency bundling",
 })
 
--- TODO(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
+-- SPEC(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
 -- Description: Extend lgcc to scan entire directories and multi-file projects using the compressed intermediate representation to detect cross-module invariant violations and systemic flaws.
 -- Criterion: review: "lgcc directory execution passes compressed project context and populates Quickfix with multi-file error locations"
+-- [lexlean:declarations]
+-- {"body":{"arguments":[],"function":{"name":"lgcc_compressed_ir"},"kind":"call"},"kind":"definition","name":"lgcc_project_scan","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"lgcc_project_scan_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_project_scan"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 return M

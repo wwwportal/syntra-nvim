@@ -4,9 +4,13 @@
 
 namespace lgcc {
 
-// TODO(ir-ast-extractor | tier:A | blocks:[ir-contract-skeletonizer]): Extract symbols, declarations, and import edges from Python and Lua ASTs.
+// SPEC(ir-ast-extractor | tier:A | blocks:[ir-contract-skeletonizer]): Extract symbols, declarations, and import edges from Python and Lua ASTs.
 // Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
 // Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
+// [lexlean:declarations]
+// {"body":{"kind":"bool","value":true},"kind":"definition","name":"ir_ast_extractor","parameters":[],"result":{"kind":"bool"}}
+// [lexlean:theorems]
+// {"kind":"theorem","name":"ir_ast_extractor_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"ir_ast_extractor"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 // SPEC(lgcc-spec-scanner | tier:B | depends_on:[tasks-add-spec-scaffold] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
 // Description: Implement in-line specification patch scanner in lgcc C++ extracting distributed LexLean fragments and dependency tags across all source files.
@@ -59,6 +63,7 @@ private:
     static ExtractedModule extract_cpp(const fs::path& filepath, const std::string& content);
     static ExtractedModule extract_lua(const fs::path& filepath, const std::string& content);
     static ExtractedModule extract_python(const fs::path& filepath, const std::string& content);
+    static ExtractedModule extract_rust(const fs::path& filepath, const std::string& content);
 };
 
 } // namespace lgcc

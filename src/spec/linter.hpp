@@ -37,6 +37,7 @@ struct LintResult {
 class TaskLinter {
 public:
     static LintResult lint_repository(const fs::path& repo_root);
+    static int fix_repository(const fs::path& repo_root, bool apply = false);
     static std::string to_json(const LintResult& res);
     static void print_report(const LintResult& res);
 

@@ -13,6 +13,8 @@ std::string Skeletonizer::skeletonize(const fs::path& filepath) {
         return skeletonize_lua(filepath, content);
     } else if (ext == ".py") {
         return skeletonize_python(filepath, content);
+    } else if (ext == ".rs") {
+        return skeletonize_rust(filepath, content);
     }
 
     return content;
@@ -28,19 +30,18 @@ std::string Skeletonizer::skeletonize_cpp(const fs::path&, const std::string& co
     for (const auto& line : lines) {
         std::string trimmed = trim(line);
         if (trimmed.empty()) {
-            if (!in_fn_body) result += "\n";
+            continue;
+        }
+        // Skip regular comments in skeleton to keep interface compact, preserve /// doc comments
+        if (starts_with(trimmed, "//") && !starts_with(trimmed, "///")) {
             continue;
         }
 
-        // Count braces
         int open_b = 0;
         int close_b = 0;
-        for (char c : line) {
-            if (c == '{') open_b++;
-            if (c == '}') close_b++;
-        }
+        count_braces_outside_strings(line, open_b, close_b);
 
-        if (!in_fn_body && starts_with(trimmed, "namespace ") && line.find('{') != std::string::npos) {
+        if (!in_fn_body && starts_with(trimmed, "namespace ") && open_b > 0) {
             namespace_depth++;
             brace_depth += (open_b - close_b);
             result += line + "\n";
@@ -48,13 +49,12 @@ std::string Skeletonizer::skeletonize_cpp(const fs::path&, const std::string& co
         }
 
         if (!in_fn_body && brace_depth == namespace_depth) {
-            // Check if this opens a function body
             if (open_b > 0 && trimmed.find("class ") == std::string::npos &&
                 trimmed.find("struct ") == std::string::npos &&
                 trimmed.find("enum ") == std::string::npos &&
                 trimmed.find("namespace ") == std::string::npos) {
                 
-                auto brace_pos = line.find('{');
+                auto brace_pos = line.rfind('{');
                 result += line.substr(0, brace_pos) + " { /* stub */ }\n";
                 brace_depth += (open_b - close_b);
                 if (brace_depth > namespace_depth) {
@@ -80,61 +80,69 @@ std::string Skeletonizer::skeletonize_cpp(const fs::path&, const std::string& co
     return result;
 }
 
-std::string Skeletonizer::skeletonize_lua(const fs::path& filepath, const std::string& content) {
-    // If nvim -l is available, run high-speed treesitter skeletonizer
-    std::string lua_script = 
-        "local f = io.open([[" + filepath.string() + "]], 'r')\n"
-        "if not f then return end\n"
-        "local content = f:read('*a')\n"
-        "f:close()\n"
-        "local parser = vim.treesitter.get_string_parser(content, 'lua')\n"
-        "local root = parser:parse()[1]:root()\n"
-        "local symbols = {}\n"
-        "for child in root:iter_children() do\n"
-        "  if child:type() == 'function_declaration' then\n"
-        "    local srow, _, erow, _ = child:range()\n"
-        "    local name_node = child:field('name')[1]\n"
-        "    local param_node = child:field('parameters')[1]\n"
-        "    local name_text = name_node and vim.treesitter.get_node_text(name_node, content) or 'anonymous'\n"
-        "    local param_text = param_node and vim.treesitter.get_node_text(param_node, content) or '()'\n"
-        "    table.insert(symbols, { line = srow + 1, end_line = erow + 1, sig = 'function ' .. name_text .. param_text })\n"
-        "  end\n"
-        "end\n"
-        "local lines = {}\n"
-        "for l in content:gmatch('[^\\r\\n]*') do table.insert(lines, l) end\n"
-        "table.sort(symbols, function(a, b) return a.line > b.line end)\n"
-        "for _, s in ipairs(symbols) do\n"
-        "  for i = s.line, s.end_line do lines[i] = nil end\n"
-        "  lines[s.line] = s.sig .. '\\n  -- ... [stub]\\nend'\n"
-        "end\n"
-        "local out = {}\n"
-        "for _, l in pairs(lines) do table.insert(out, l) end\n"
-        "io.stdout:write(table.concat(out, '\\n'))\n";
-
-    FILE* pipe = popen("nvim -l - 2>/dev/null", "w");
-    if (pipe) {
-        fwrite(lua_script.data(), 1, lua_script.size(), pipe);
-        pclose(pipe);
-    }
-
-    // Fallback: fast regex/line based Lua skeletonizer
+std::string Skeletonizer::skeletonize_lua(const fs::path&, const std::string& content) {
     auto lines = split_lines(content);
     std::string result;
-    bool in_fn = false;
+    bool in_block = false;
+    int block_indent = 0;
+    std::string block_closer = "end";
+
     std::regex fn_re(R"(^\s*(local\s+function\s+([a-zA-Z0-9_]+)\s*\((.*?)\)|function\s+([a-zA-Z0-9_\.:]+)\s*\((.*?)\)|(?:local\s+)?([a-zA-Z0-9_\.:]+)\s*=\s*function\s*\((.*?)\)))");
+    std::regex cmd_re(R"(^\s*vim\.api\.nvim_create_(user_command|autocmd)\s*\()");
 
     for (const auto& line : lines) {
-        if (!in_fn) {
-            std::smatch m;
-            if (std::regex_search(line, m, fn_re)) {
-                result += line + "\n  -- ... [stub]\nend\n";
-                in_fn = true;
+        std::string trimmed = trim(line);
+        if (trimmed.empty()) continue;
+
+        auto first_non_space = line.find_first_not_of(" \t");
+        int indent = (first_non_space == std::string::npos) ? 0 : static_cast<int>(first_non_space);
+
+        if (!in_block) {
+            // Preserve LuaDoc comments (---), skip non-doc comments (--)
+            if (starts_with(trimmed, "--") && !starts_with(trimmed, "---")) {
                 continue;
             }
+
+            std::smatch m;
+            if (std::regex_search(line, m, fn_re)) {
+                if (ends_with(trimmed, "end")) {
+                    result += line + "\n";
+                } else {
+                    result += line + " -- [stub] end\n";
+                    in_block = true;
+                    block_indent = indent;
+                    block_closer = "end";
+                }
+                continue;
+            }
+
+            if (indent == 0 && std::regex_search(line, m, cmd_re)) {
+                result += line + " -- [stub] })\n";
+                in_block = true;
+                block_indent = indent;
+                block_closer = "})";
+                continue;
+            }
+
+            // Collapse multiline top-level table literals `local foo = {`
+            if (indent == 0 && ends_with(trimmed, "{") && trimmed.find("function") == std::string::npos) {
+                result += line + " -- [table] }\n";
+                in_block = true;
+                block_indent = indent;
+                block_closer = "}";
+                continue;
+            }
+
             result += line + "\n";
         } else {
-            if (trim(line) == "end") {
-                in_fn = false;
+            if (indent == block_indent) {
+                if (block_closer == "end" && (trimmed == "end" || starts_with(trimmed, "end)") || starts_with(trimmed, "end,"))) {
+                    in_block = false;
+                } else if (block_closer == "})" && (trimmed == "})" || starts_with(trimmed, "})"))) {
+                    in_block = false;
+                } else if (block_closer == "}" && (trimmed == "}" || starts_with(trimmed, "}"))) {
+                    in_block = false;
+                }
             }
         }
     }
@@ -143,7 +151,6 @@ std::string Skeletonizer::skeletonize_lua(const fs::path& filepath, const std::s
 }
 
 std::string Skeletonizer::skeletonize_python(const fs::path&, const std::string& content) {
-    // Zero-overhead python skeletonizer: preserve class, signatures, docstrings; stub def bodies
     auto lines = split_lines(content);
     std::string result;
     bool in_docstring = false;
@@ -153,6 +160,9 @@ std::string Skeletonizer::skeletonize_python(const fs::path&, const std::string&
     std::regex def_re(R"(^([ \t]*)(?:async[ \t]+)?def[ \t]+[a-zA-Z0-9_]+\s*\([^)]*\))");
 
     for (const auto& line : lines) {
+        std::string trimmed = trim(line);
+        if (trimmed.empty() || starts_with(trimmed, "#")) continue;
+
         auto first_char = line.find_first_not_of(" \t");
         int indent = (first_char == std::string::npos) ? 0 : static_cast<int>(first_char);
 
@@ -166,11 +176,9 @@ std::string Skeletonizer::skeletonize_python(const fs::path&, const std::string&
 
         if (in_def) {
             if (first_char != std::string::npos && indent <= def_indent) {
-                // Out of function body
                 in_def = false;
                 result += line + "\n";
             } else {
-                // Check docstring
                 if (line.find("\"\"\"") != std::string::npos || line.find("'''") != std::string::npos) {
                     result += line + "\n";
                     in_docstring = !in_docstring;
@@ -183,6 +191,51 @@ std::string Skeletonizer::skeletonize_python(const fs::path&, const std::string&
         } else {
             result += line + "\n";
         }
+    }
+
+    return result;
+}
+
+std::string Skeletonizer::skeletonize_rust(const fs::path&, const std::string& content) {
+    auto lines = split_lines(content);
+    std::string result;
+    int brace_depth = 0;
+    bool in_fn_body = false;
+    int fn_entry_brace = 0;
+
+    std::regex fn_re(R"(^[ \t]*(?:pub[ \t]+)?(?:unsafe[ \t]+)?(?:extern[ \t]+"C"[ \t]+)?fn[ \t]+[a-zA-Z0-9_]+\s*\()");
+
+    for (const auto& line : lines) {
+        std::string trimmed = trim(line);
+        if (trimmed.empty()) continue;
+        if (starts_with(trimmed, "//") && !starts_with(trimmed, "///")) continue;
+
+        int open_b = 0;
+        int close_b = 0;
+        count_braces_outside_strings(line, open_b, close_b);
+
+        if (!in_fn_body && std::regex_search(line, fn_re) && open_b > 0) {
+            auto bpos = line.rfind('{');
+            result += line.substr(0, bpos) + "{ /* stub */ }\n";
+            fn_entry_brace = brace_depth;
+            brace_depth += (open_b - close_b);
+            if (brace_depth > fn_entry_brace) {
+                in_fn_body = true;
+            }
+            continue;
+        }
+
+        if (in_fn_body) {
+            brace_depth += (open_b - close_b);
+            if (brace_depth <= fn_entry_brace) {
+                brace_depth = fn_entry_brace;
+                in_fn_body = false;
+            }
+            continue;
+        }
+
+        brace_depth += (open_b - close_b);
+        result += line + "\n";
     }
 
     return result;

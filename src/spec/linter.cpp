@@ -400,4 +400,105 @@ std::string TaskLinter::to_json(const LintResult& res) {
     return ss.str();
 }
 
+int TaskLinter::fix_repository(const fs::path& repo_root, bool apply) {
+    auto res = lint_repository(repo_root);
+    std::unordered_set<std::string> used_ids;
+    for (const auto& t : res.tasks) used_ids.insert(t.id);
+
+    std::regex task_header_re(
+        R"(^[ \t]*(?:#|//|--)\s*(TODO|FIXME|SPEC)\(([a-zA-Z0-9_\-]+)\s*\|\s*tier:([ABC])((?:\s*\|\s*(?:blocks|depends_on):\[[a-zA-Z0-9_\-,\s]*\])*)\):(?:\s*(.*))?$)"
+    );
+    std::regex lazy_todo_re(
+        R"(^([ \t]*(?:#|//|--))\s*(TODO|FIXME|SPEC)\s*:?\s*(.*)$)",
+        std::regex_constants::icase
+    );
+
+    int fixed_count = 0;
+    for (const auto& entry : fs::recursive_directory_iterator(repo_root, fs::directory_options::skip_permission_denied)) {
+        if (!entry.is_regular_file()) continue;
+        std::string ext = entry.path().extension().string();
+        if (!SCAN_EXTENSIONS.count(ext)) continue;
+        bool ignored = false;
+        for (const auto& part : entry.path()) {
+            if (IGNORE_DIRS.count(part.string())) { ignored = true; break; }
+        }
+        if (ignored) continue;
+
+        std::string content = read_file(entry.path());
+        auto lines = split_lines(content);
+        bool modified = false;
+        std::vector<std::string> new_lines;
+        std::string stem = entry.path().stem().string();
+        std::string rel_path = fs::relative(entry.path(), repo_root).string();
+
+        for (size_t i = 0; i < lines.size(); ++i) {
+            const auto& line = lines[i];
+            std::smatch m;
+            if (!std::regex_match(line, task_header_re) && std::regex_match(line, m, lazy_todo_re)) {
+                std::string prefix = m[1].str();
+                std::string kind = m[2].str();
+                for (char& c : kind) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                std::string raw_desc = trim(m[3].str());
+                if (raw_desc.empty()) raw_desc = "Resolve " + kind + " in " + stem;
+
+                // Synthesize deterministic slug ID
+                std::string slug;
+                int words = 0;
+                bool in_w = false;
+                for (char c : raw_desc) {
+                    if (std::isalnum(static_cast<unsigned char>(c))) {
+                        slug += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                        in_w = true;
+                    } else if (in_w) {
+                        words++;
+                        if (words >= 3) break;
+                        slug += '-';
+                        in_w = false;
+                    }
+                }
+                while (!slug.empty() && slug.back() == '-') slug.pop_back();
+                if (slug.empty()) slug = "task";
+                std::string base_id = stem + "-" + slug;
+                for (char& c : base_id) if (c == '_') c = '-';
+                std::string task_id = base_id;
+                int suffix = 2;
+                while (used_ids.count(task_id)) {
+                    task_id = base_id + "-" + std::to_string(suffix++);
+                }
+                used_ids.insert(task_id);
+
+                std::string h1 = prefix + " " + kind + "(" + task_id + " | tier:B): " + raw_desc;
+                std::string h2 = prefix + " Description: " + raw_desc;
+                std::string h3 = prefix + " Criterion: review: \"" + raw_desc + " is implemented and verified\"";
+
+                std::cout << "[SYNTHESIZE] " << rel_path << ":" << (i + 1) << " -> " << task_id << "\n"
+                          << "  " << h1 << "\n  " << h2 << "\n  " << h3 << "\n";
+
+                new_lines.push_back(h1);
+                new_lines.push_back(h2);
+                new_lines.push_back(h3);
+                modified = true;
+                fixed_count++;
+            } else {
+                new_lines.push_back(line);
+            }
+        }
+
+        if (modified && apply) {
+            std::ostringstream out;
+            for (const auto& l : new_lines) out << l << "\n";
+            write_file(entry.path(), out.str());
+        }
+    }
+
+    if (fixed_count == 0) {
+        std::cout << "[PASS] No unstructured TODO/FIXME comments found.\n";
+    } else if (apply) {
+        std::cout << "[APPLIED] Converted " << fixed_count << " unstructured comment(s) into Task Graph contracts.\n";
+    } else {
+        std::cout << "[DRY-RUN] Synthesized " << fixed_count << " contract(s). Re-run with --apply to write changes.\n";
+    }
+    return fixed_count;
+}
+
 } // namespace lgcc

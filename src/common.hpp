@@ -115,4 +115,57 @@ inline std::vector<std::string> split_lines(std::string_view text) {
     return lines;
 }
 
+inline void count_braces_outside_strings(std::string_view line, int& open_b, int& close_b) {
+    open_b = 0;
+    close_b = 0;
+    bool in_str = false;
+    bool in_char = false;
+    bool in_raw = false;
+
+    for (size_t i = 0; i < line.size(); ++i) {
+        char c = line[i];
+        if (in_raw) {
+            if (c == ')' && i + 1 < line.size() && line[i + 1] == '"') {
+                in_raw = false;
+                ++i;
+            }
+            continue;
+        }
+        if (in_str) {
+            if (c == '\\' && i + 1 < line.size()) {
+                ++i;
+            } else if (c == '"') {
+                in_str = false;
+            }
+            continue;
+        }
+        if (in_char) {
+            if (c == '\\' && i + 1 < line.size()) {
+                ++i;
+            } else if (c == '\'') {
+                in_char = false;
+            }
+            continue;
+        }
+        if (c == '/' && i + 1 < line.size() && line[i + 1] == '/') {
+            break; // line comment
+        }
+        if (c == 'R' && i + 2 < line.size() && line[i + 1] == '"' && line[i + 2] == '(') {
+            in_raw = true;
+            i += 2;
+            continue;
+        }
+        if (c == '"') {
+            in_str = true;
+            continue;
+        }
+        if (c == '\'') {
+            in_char = true;
+            continue;
+        }
+        if (c == '{') open_b++;
+        else if (c == '}') close_b++;
+    }
+}
+
 } // namespace lgcc

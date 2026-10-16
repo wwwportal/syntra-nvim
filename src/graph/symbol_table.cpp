@@ -8,7 +8,7 @@ std::vector<fs::path> SymbolTable::scan_repository(const fs::path& repo_root) {
         ".git", "build", "target", ".lazy", "vendor", "__pycache__", ".venv", "venv", "node_modules"
     };
     static const std::unordered_set<std::string> valid_exts = {
-        ".cpp", ".hpp", ".h", ".cc", ".cxx", ".lua", ".py"
+        ".cpp", ".hpp", ".h", ".cc", ".cxx", ".lua", ".py", ".rs"
     };
 
     if (!fs::exists(repo_root) || !fs::is_directory(repo_root)) {
@@ -19,13 +19,11 @@ std::vector<fs::path> SymbolTable::scan_repository(const fs::path& repo_root) {
         for (const auto& entry : fs::recursive_directory_iterator(repo_root, fs::directory_options::skip_permission_denied)) {
             if (entry.is_directory()) {
                 if (ignore_dirs.count(entry.path().filename().string())) {
-                    // Skip descending into ignored directory
                     continue;
                 }
             } else if (entry.is_regular_file()) {
                 std::string ext = entry.path().extension().string();
                 if (valid_exts.count(ext)) {
-                    // Verify none of the parent parts are in ignore_dirs
                     bool ignored = false;
                     for (const auto& part : entry.path()) {
                         if (ignore_dirs.count(part.string())) {
@@ -54,17 +52,41 @@ std::unordered_map<std::string, GlobalSymbol> SymbolTable::build_table(const fs:
         std::string mod_stem = file.stem().string();
 
         for (const auto& sym : mod.symbols) {
-            std::string fqn = mod_stem + "." + sym.name;
-            GlobalSymbol gsym;
-            gsym.fqn = fqn;
-            gsym.filepath = file;
-            gsym.line = sym.line;
-            gsym.end_line = sym.end_line;
-            gsym.signature = sym.signature;
-            gsym.kind = sym.kind;
-            gsym.token_cost = estimate_tokens(sym.signature);
+            std::string norm_name = sym.name;
+            size_t pos = 0;
+            while ((pos = norm_name.find("::", pos)) != std::string::npos) {
+                norm_name.replace(pos, 2, ".");
+                pos += 1;
+            }
+            std::string fqn = mod_stem + "." + norm_name;
 
-            table[fqn] = gsym;
+            auto it = table.find(fqn);
+            if (it == table.end()) {
+                GlobalSymbol gsym;
+                gsym.fqn = fqn;
+                gsym.filepath = file;
+                gsym.line = sym.line;
+                gsym.end_line = sym.end_line;
+                gsym.signature = sym.signature;
+                gsym.kind = sym.kind;
+                gsym.token_cost = estimate_tokens(sym.signature);
+                gsym.calls = sym.calls;
+                table[fqn] = std::move(gsym);
+            } else {
+                // Merge calls from .cpp implementation into existing .hpp entry (or vice versa)
+                std::unordered_set<std::string> seen(it->second.calls.begin(), it->second.calls.end());
+                for (const auto& c : sym.calls) {
+                    if (!seen.count(c)) {
+                        seen.insert(c);
+                        it->second.calls.push_back(c);
+                    }
+                }
+                if ((sym.end_line - sym.line) > (it->second.end_line - it->second.line)) {
+                    it->second.filepath = file;
+                    it->second.line = sym.line;
+                    it->second.end_line = sym.end_line;
+                }
+            }
         }
     }
 
