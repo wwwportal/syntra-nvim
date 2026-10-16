@@ -804,6 +804,8 @@ mod tests {
         let spec = lower_and_verify_semantic_json("Syntra.Spec", json).unwrap();
         assert_eq!(spec.definitions_verified, 2);
         assert_eq!(spec.theorems_verified, 2);
+        assert!(spec.rust_source.contains("pub fn tasks_add_spec_scaffold() -> bool"));
+        assert!(spec.rust_source.contains("pub fn lgcc_spec_scanner() -> bool"));
         assert!(spec
             .c_bindings
             .header
