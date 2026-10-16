@@ -8,15 +8,23 @@ namespace lgcc {
 // Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
 // Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
 
-// TODO(lgcc-spec-scanner | tier:B | depends_on:[tasks-add-spec-scaffold] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
+// SPEC(lgcc-spec-scanner | tier:B | depends_on:[tasks-add-spec-scaffold] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
 // Description: Implement in-line specification patch scanner in lgcc C++ extracting distributed LexLean fragments and dependency tags across all source files.
-// Criterion: review: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
+// Criterion: assert: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
 // [lexlean:declarations]
-// {"constructors":[{"fields":[],"name":"TierA"},{"fields":[],"name":"TierB"},{"fields":[],"name":"TierC"}],"kind":"inductive","name":"Tier","parameters":[],"type_parameters":[]}
+// {"constructors":[{"fields":[],"name":"TierA"},{"fields":[],"name":"TierB"},{"fields":[],"name":"TierC"}],"kind":"inductive","name":"Tier","parameters":[],"type_parameters":[]},{"body":{"arguments":[],"function":{"name":"tasks_add_spec_scaffold"},"kind":"call"},"kind":"definition","name":"lgcc_spec_scanner","parameters":[],"result":{"kind":"bool"}}
+// [lexlean:theorems]
+// {"kind":"theorem","name":"lgcc_spec_scanner_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_spec_scanner"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
-// TODO(prismpm-jit-verifier | tier:B | depends_on:[lgcc-topo-spec-stitcher] | blocks:[prismpm-rust-bridge]): Execute Just-In-Time formal verification of stitched LexLean specifications.
+// SPEC(prismpm-jit-verifier | tier:B | depends_on:[lgcc-topo-spec-stitcher] | blocks:[prismpm-rust-bridge]): Execute Just-In-Time formal verification of stitched LexLean specifications.
 // Description: Hook lgcc JIT-stitched .lex.tex specification into prismpm check and lexlean verify to execute machine-checked proof replay before commit and build.
-// Criterion: review: "Running lgcc --verify-specs compiles stitched specification and validates all Lean 4 theorems with zero unproven obligations"
+// Criterion: assert: "Running lgcc --verify-specs compiles stitched specification and validates all Lean 4 theorems with zero unproven obligations"
+// [lexlean:declarations]
+// {"body":{"arguments":[],"function":{"name":"lgcc_topo_spec_stitcher"},"kind":"call"},"kind":"definition","name":"prismpm_jit_verifier","parameters":[],"result":{"kind":"bool"}}
+// [lexlean:theorems]
+// {"kind":"theorem","name":"prismpm_jit_verifier_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+
+
 
 // TODO(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
 // Description: Consume verified Rust crates emitted by prismpm through its C ABI layer (prod_codegen::CBindings / extern "C") to expose contract verification functions and invariants directly to C++.

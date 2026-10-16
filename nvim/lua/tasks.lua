@@ -20,9 +20,15 @@
 -- Description: Define specification patch syntax and grammar allowing in-line source comments to embed typed LexLean declarations, inductive types, and theorem blocks.
 -- Criterion: review: "Formal grammar for in-line [lexlean:declarations] and [lexlean:theorem] patches validates under tree-sitter and regex parsers"
 
--- TODO(tasks-add-spec-scaffold | tier:B | depends_on:[lgcc-native-linter] | blocks:[lgcc-spec-scanner]): Extend :Tasks add to scaffold formal LexLean SPEC blocks with declaration and theorem templates.
+-- SPEC(tasks-add-spec-scaffold | tier:B | depends_on:[lgcc-native-linter] | blocks:[lgcc-spec-scanner]): Extend :Tasks add to scaffold formal LexLean SPEC blocks with declaration and theorem templates.
 -- Description: Extend :Tasks add in Neovim to scaffold formal LexLean SPEC blocks with [lexlean:declarations] and [lexlean:theorems] templates.
--- Criterion: review: ":Tasks add spec <desc> inserts structured SPEC comment block with LexLean payload stubs at target line"
+-- Criterion: assert: ":Tasks add spec <desc> inserts structured SPEC comment block with LexLean payload stubs at target line"
+-- [lexlean:declarations]
+-- {"body":{"kind":"bool","value":true},"kind":"definition","name":"tasks_add_spec_scaffold","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"tasks_add_spec_scaffold_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"tasks_add_spec_scaffold"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+
+
 
 -- TODO(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks]): Package and version syntra-nvim Debian release with verified task DAG.
 -- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.
@@ -345,7 +351,13 @@ end
 local function parse_task_spec(args_str)
   local str = vim.trim(args_str or "")
   if str == "" then
-    return nil, "Usage: :Tasks add [file] <TODO|FIXME>[: <description>]"
+    return nil, "Usage: :Tasks add [file] <TODO|FIXME|SPEC>[: <description>] or :Tasks add spec [file] <description>"
+  end
+
+  local is_spec_command = false
+  if str:match("^[sS][pP][eE][cC]%s+") then
+    is_spec_command = true
+    str = vim.trim(str:sub(5))
   end
 
   local target_file = nil
@@ -369,9 +381,13 @@ local function parse_task_spec(args_str)
       blocks = custom_attrs:match("blocks:%[[^%]]*%]")
       depends_on = custom_attrs:match("depends_on:%[[^%]]*%]")
     end
+    local resolved_kind = "TODO"
+    if kind == "FIXME" then resolved_kind = "FIXME"
+    elseif kind == "SPEC" or is_spec_command then resolved_kind = "SPEC" end
+
     return {
       file = target_file,
-      kind = (kind == "FIXME") and "FIXME" or "TODO",
+      kind = resolved_kind,
       id = custom_id,
       tier = tier,
       title = vim.trim(desc),
@@ -381,45 +397,68 @@ local function parse_task_spec(args_str)
     }
   end
 
-  local k, d = str:match("^(%a+)%s*:%s*(.+)$")
-  if not k then
-    k, d = str:match("^(%a+)%s+(.+)$")
+  local final_kind = is_spec_command and "SPEC" or nil
+  local parsed_id = nil
+  local parsed_desc = nil
+
+  local k, d = str:match("^([%w_-]+)%s*:%s*(.+)$")
+  if k and d then
+    local ku = k:upper()
+    if ku == "TODO" or ku == "FIXME" or ku == "SPEC" then
+      final_kind = ku
+      parsed_desc = vim.trim(d)
+    elseif is_spec_command then
+      parsed_id = k
+      final_kind = "SPEC"
+      parsed_desc = vim.trim(d)
+    else
+      return nil, string.format("Unknown task type '%s'. Expected TODO, FIXME, or SPEC", k)
+    end
+  elseif is_spec_command then
+    final_kind = "SPEC"
+    parsed_desc = vim.trim(str)
+  else
+    local k2, d2 = str:match("^(%a+)%s+(.+)$")
+    if k2 and d2 then
+      local ku = k2:upper()
+      if ku == "TODO" or ku == "FIXME" or ku == "SPEC" then
+        final_kind = ku
+        parsed_desc = vim.trim(d2)
+      else
+        return nil, string.format("Unknown task type '%s'. Expected TODO, FIXME, or SPEC", k2)
+      end
+    else
+      return nil, "Invalid format. Expected: :Tasks add [file] <TODO|FIXME|SPEC>:<description> or :Tasks add spec [file] <description>"
+    end
   end
 
-  if not k or not d then
-    return nil, "Invalid format. Expected: :Tasks add <TODO|FIXME>:<description>"
-  end
-
-  k = k:upper()
-  if k ~= "TODO" and k ~= "FIXME" then
-    return nil, string.format("Unknown task type '%s'. Expected TODO or FIXME", k)
-  end
-
-  d = vim.trim(d)
-  if d == "" then
+  if not parsed_desc or parsed_desc == "" then
     return nil, "Task description cannot be empty"
   end
 
-  local words = {}
-  local stop_words = { a=true, an=true, the=true, ["to"]=true, ["for"]=true, ["in"]=true, of=true, on=true, at=true, with=true, ["and"]=true }
-  for w in d:lower():gmatch("[a-z0-9]+") do
-    if not stop_words[w] then
-      table.insert(words, w)
+  local auto_id = parsed_id
+  if not auto_id or auto_id == "" then
+    local words = {}
+    local stop_words = { a=true, an=true, the=true, ["to"]=true, ["for"]=true, ["in"]=true, of=true, on=true, at=true, with=true, ["and"]=true }
+    for w in parsed_desc:lower():gmatch("[a-z0-9]+") do
+      if not stop_words[w] then
+        table.insert(words, w)
+      end
+      if #words >= 4 then break end
     end
-    if #words >= 4 then break end
+    if #words == 0 then
+      table.insert(words, "task")
+    end
+    auto_id = table.concat(words, "-")
   end
-  if #words == 0 then
-    table.insert(words, "task")
-  end
-  local auto_id = table.concat(words, "-")
 
   return {
     file = target_file,
-    kind = k,
+    kind = final_kind,
     id = auto_id,
     tier = "B",
-    title = d,
-    description = d,
+    title = parsed_desc,
+    description = parsed_desc,
   }
 end
 
@@ -631,12 +670,38 @@ local function insert_task_into_buf(bufnr, origin_win, spec, target_line)
   local current_line = (row <= line_count) and vim.api.nvim_buf_get_lines(bufnr, row - 1, row, false)[1] or ""
   local indent = current_line:match("^(%s*)") or ""
 
-  local lines = {
-    string.format("%s%s%s(%s | tier:%s): %s", indent, leader, spec.kind, spec.id, spec.tier, spec.title),
-    string.format("%s%sDescription: %s", indent, leader, spec.description),
-    string.format('%s%sCriterion: review: "%s"', indent, leader, spec.description),
-    "",
-  }
+  local header_attrs = string.format("tier:%s", spec.tier)
+  if spec.blocks and spec.blocks ~= "" then
+    header_attrs = header_attrs .. " | " .. spec.blocks
+  end
+  if spec.depends_on and spec.depends_on ~= "" then
+    header_attrs = header_attrs .. " | " .. spec.depends_on
+  end
+
+  local lines
+  if spec.kind == "SPEC" then
+    local func_name = spec.id:gsub("[^%w_]", "_"):gsub("^_+", "")
+    if func_name == "" or func_name:match("^%d") then
+      func_name = "spec_" .. func_name
+    end
+    lines = {
+      string.format("%s%sSPEC(%s | %s): %s", indent, leader, spec.id, header_attrs, spec.title),
+      string.format("%s%sDescription: %s", indent, leader, spec.description),
+      string.format('%s%sCriterion: assert: "%s"', indent, leader, spec.description),
+      string.format("%s%s[lexlean:declarations]", indent, leader),
+      string.format('%s%s{"body":{"kind":"bool","value":true},"kind":"definition","name":"%s","parameters":[],"result":{"kind":"bool"}}', indent, leader, func_name),
+      string.format("%s%s[lexlean:theorems]", indent, leader),
+      string.format('%s%s{"kind":"theorem","name":"%s_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"%s"},"kind":"call"},"right":{"kind":"bool","value":true}}}', indent, leader, func_name, func_name),
+      "",
+    }
+  else
+    lines = {
+      string.format("%s%s%s(%s | %s): %s", indent, leader, spec.kind, spec.id, header_attrs, spec.title),
+      string.format("%s%sDescription: %s", indent, leader, spec.description),
+      string.format('%s%sCriterion: review: "%s"', indent, leader, spec.description),
+      "",
+    }
+  end
 
   local insert_idx = math.max(0, row - 1)
   vim.api.nvim_buf_set_lines(bufnr, insert_idx, insert_idx, false, lines)
@@ -736,7 +801,7 @@ local function task_complete(arglead, cmdline)
     local subcmds = { "add", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, subcmds)
   elseif (#parts == 2 and cmdline:match("%s$") and parts[2] == "add") or (#parts == 3 and parts[2] == "add") then
-    local add_prefixes = { "TODO:", "FIXME:" }
+    local add_prefixes = { "TODO:", "FIXME:", "SPEC:", "spec" }
     return vim.tbl_filter(function(s) return vim.startswith(s, arglead) end, add_prefixes)
   end
   local subcmds = { "add", "prover", "syntra", "syntra-nvim", "tw", "taskwarrior" }

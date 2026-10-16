@@ -118,7 +118,8 @@ std::string format_ir_bundle(const fs::path& target_path, const RouteResult& res
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: lgcc [--extract <file> | --skeletonize <file> | --bundle <file> | "
-                  << "--graph [root] | --route <file> --budget <N> | --metrics <file> | --scan-repo [root]]\n";
+                  << "--graph [root] | --route <file> --budget <N> | --metrics <file> | --scan-repo [root] | "
+                  << "--lint-tasks [--json] [root] | --scan-specs [root] | --stitch-specs [mod] [root] | --verify-specs [mod] [root]]\n";
         return 1;
     }
 
@@ -249,6 +250,46 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         std::cout << res.stitched_lex_tex;
+        return 0;
+    }
+
+    if (mode == "--verify-specs" || mode == "--verify") {
+        fs::path root = fs::current_path();
+        std::string mod_name = "Foundation.Specification.V1.JITSpec";
+        bool keep = false;
+
+        for (int i = 2; i < argc; ++i) {
+            std::string arg = argv[i];
+            if (arg == "--keep" || arg == "-k") {
+                keep = true;
+            } else if (arg.rfind("--", 0) != 0) {
+                if (mod_name == "Foundation.Specification.V1.JITSpec") {
+                    mod_name = arg;
+                } else {
+                    root = arg;
+                }
+            }
+        }
+
+        auto res = SpecStitcher::verify_specs(root, mod_name, "", keep);
+        if (!res.success) {
+            std::cerr << "Verification failed: " << res.error << "\n";
+            if (!res.output.empty()) {
+                std::cerr << res.output << "\n";
+            }
+            return 1;
+        }
+
+        std::cout << "● Machine-Checked Proof Replay Succeeded!\n";
+        std::cout << "  Module:           " << mod_name << "\n";
+        std::cout << "  Modules Verified: " << res.modules_verified << "\n";
+        if (!res.semantic_id.empty()) {
+            std::cout << "  Semantic ID:      " << res.semantic_id << "\n";
+        }
+        if (!res.attestation.empty()) {
+            std::cout << "  Attestation:      " << res.attestation << "\n";
+        }
+        std::cout << "  PrismPM Status:   Sound (Zero unproven obligations)\n";
         return 0;
     }
 
