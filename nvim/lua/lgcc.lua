@@ -279,11 +279,12 @@ If there are no logic errors, output: CLEAN]]
 
   local function execute_run(engine_name)
     state.engine = engine_name
-    state.raw_tail = "dispatching to " .. engine_name .. "..."
+    local agy_model = opts.model or "gemini-3.8-flash-low"
+    state.raw_tail = "dispatching to " .. engine_name .. " (" .. agy_model .. ")..."
 
     local cmd = {}
     if engine_name == "agy" then
-      cmd = { "agy", "-p", full_prompt, "--dangerously-skip-permissions", "--disable-slash-commands", "--effort", "low", "--output-format", "stream-json" }
+      cmd = { "agy", "-p", full_prompt, "--model", agy_model, "--dangerously-skip-permissions", "--disable-slash-commands", "--effort", "low", "--output-format", "stream-json" }
     elseif engine_name == "opencode" then
       cmd = { "opencode", "run", "--auto", full_prompt }
     else
@@ -370,11 +371,21 @@ If there are no logic errors, output: CLEAN]]
       end
 
       -- Failover condition: If agy failed (exit non-zero, quota exceeded, or empty output)
-      local is_quota_error = out:match("RESOURCE_EXHAUSTED") or out:match("quota") or out:match("429")
+      local is_quota_error = out:match("RESOURCE_EXHAUSTED") or out:match("quota") or out:match("429") or out:match("Rate limit")
       if engine_name == "agy" and (res.code ~= 0 or is_quota_error or vim.trim(out) == "") then
         vim.schedule(function()
-          vim.notify("lgcc: agy quota/execution limit reached, failing over to opencode...", vim.log.levels.WARN)
-          execute_run("opencode")
+          if agy_model:find("argon") then
+            vim.notify("lgcc: Argon quota reached, falling back to gemini-3.8-flash-low...", vim.log.levels.WARN)
+            opts.model = "gemini-3.8-flash-low"
+            execute_run("agy")
+          elseif agy_model:find("flash") then
+            vim.notify("lgcc: Flash quota reached, falling back to claude-sonnet-5-5-low...", vim.log.levels.WARN)
+            opts.model = "claude-sonnet-5-5-low"
+            execute_run("agy")
+          else
+            vim.notify("lgcc: agy quota reached, failing over to opencode...", vim.log.levels.WARN)
+            execute_run("opencode")
+          end
         end)
         return
       end
@@ -499,6 +510,7 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
   local spec_path = nil
   local open_qf = false
   local engine = "agy" -- default to agy, with automatic opencode failover
+  local model_override = nil
   local target_file = nil
   local i = 1
 
@@ -512,6 +524,15 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
       bundle = false
     elseif arg == "--qf" or arg == "qf" then
       open_qf = true
+    elseif arg == "--flash" or arg == "flash" then
+      model_override = "gemini-3.8-flash-low"
+    elseif arg == "--sonnet" or arg == "sonnet" then
+      model_override = "claude-sonnet-5-5-low"
+    elseif arg == "--argon" or arg == "argon" then
+      model_override = "gemini-4-argon-medium"
+    elseif arg == "--model" or arg == "model" then
+      i = i + 1
+      model_override = fargs[i]
     elseif arg == "--budget" or arg == "budget" then
       i = i + 1
       user_budget = tonumber(fargs[i])
@@ -537,6 +558,7 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
     file = target_file,
     spec = spec_path,
     engine = engine,
+    model = model_override,
     speak = speak,
     bundle = bundle,
     budget = user_budget,
@@ -547,17 +569,22 @@ end, {
   complete = function(arglead, cmdline)
     local parts = vim.split(vim.trim(cmdline), "%s+")
     if #parts <= 2 and not cmdline:match("%s+$") then
-      local subcmds = { "clear", "-s", "--speak", "-b", "--bundle", "--no-bundle", "--budget", "spec", "--opencode", "--agy", "-l", "--local" }
+      local subcmds = { "clear", "cancel", "stop", "--flash", "--sonnet", "--opencode", "--agy", "--argon", "-s", "--speak", "-b", "--bundle", "--no-bundle", "--budget", "spec", "-l", "--local" }
       return vim.tbl_filter(function(item)
         return vim.startswith(item, arglead)
       end, subcmds)
     elseif parts[#parts - 1] == "spec" or parts[#parts - 1] == "--spec" then
       return vim.fn.getcompletion(arglead, "file")
+    elseif parts[#parts - 1] == "model" or parts[#parts - 1] == "--model" then
+      local models = { "gemini-3.8-flash-low", "claude-sonnet-5-5-low", "gemini-4-argon-medium", "claude-opus-5-5-low" }
+      return vim.tbl_filter(function(item)
+        return vim.startswith(item, arglead)
+      end, models)
     else
       return vim.fn.getcompletion(arglead, "file")
     end
   end,
-  desc = "Run logical compiler (lgcc) with live status ticker, Quickfix results, and agy/opencode failover; use -s for voice summary, -b for dependency bundling",
+  desc = "Run logical compiler (lgcc) with live status ticker, in-line diagnostics, and agy/opencode failover; use -s for voice summary, -b for dependency bundling",
 })
 
 -- SPEC(lgcc-project-scan | tier:C | depends_on:[lgcc-compressed-ir]): Enable lgcc directory-wide and project-level logical analysis.
