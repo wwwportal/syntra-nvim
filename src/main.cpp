@@ -74,6 +74,45 @@ std::string bundle_target(const fs::path& target_path) {
     return bundle.str();
 }
 
+std::string format_ir_bundle(const fs::path& target_path, const RouteResult& res) {
+    auto target_abs = fs::absolute(target_path);
+    std::string target_content = read_file(target_abs);
+    auto lines = split_lines(target_content);
+
+    std::ostringstream bundle;
+    bundle << "==============================================================================\n";
+    bundle << "TARGET FILE: " << target_abs.string() << "\n";
+    bundle << "==============================================================================\n";
+    for (size_t i = 0; i < lines.size(); ++i) {
+        bundle << (i + 1) << ": " << lines[i] << "\n";
+    }
+    bundle << "\n";
+
+    std::vector<std::string> unique_files;
+    std::unordered_set<std::string> seen_files;
+    for (const auto& sym : res.selected_symbols) {
+        std::string fstr = sym.filepath.string();
+        if (sym.filepath != target_abs && !seen_files.count(fstr)) {
+            seen_files.insert(fstr);
+            unique_files.push_back(fstr);
+        }
+    }
+
+    if (!unique_files.empty()) {
+        bundle << "==============================================================================\n";
+        bundle << "ROUTED CONTEXT IR (" << res.selected_symbols.size() 
+               << " symbols, " << res.total_tokens << " tokens / budget " << res.budget << ")\n";
+        bundle << "==============================================================================\n";
+        for (const auto& f : unique_files) {
+            bundle << "\n--- INTERFACE CONTRACT: " << f << " ---\n";
+            bundle << Skeletonizer::skeletonize(f) << "\n";
+            bundle << "--- END CONTRACT ---\n";
+        }
+    }
+
+    return bundle.str();
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Usage: lgcc [--extract <file> | --skeletonize <file> | --bundle <file> | "
@@ -166,6 +205,14 @@ int main(int argc, char* argv[]) {
             }
         }
         auto res = ContextRouter::allocate_budget(g, target_symbols, budget);
+
+        for (int i = 3; i < argc; ++i) {
+            if (std::string(argv[i]) == "--format" && i + 1 < argc && std::string(argv[i + 1]) == "ir") {
+                std::cout << format_ir_bundle(target, res);
+                return 0;
+            }
+        }
+
         std::cout << ContextRouter::to_json(res);
         return 0;
     }

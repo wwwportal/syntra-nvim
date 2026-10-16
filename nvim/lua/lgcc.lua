@@ -139,8 +139,41 @@ local function find_bundle_script()
   return nil
 end
 
+--- Known model context windows and budget profiles
+local ENGINE_BUDGET_PROFILES = {
+  ["local"] = {
+    max_context = 8192,
+    headroom = 2048, -- reserve for model reasoning/generation output
+    default_dep_budget = 2048,
+  },
+  ["opencode"] = {
+    max_context = 64000,
+    headroom = 8000,
+    default_dep_budget = 16000,
+  },
+  ["agy"] = {
+    max_context = 128000,
+    headroom = 16000,
+    default_dep_budget = 32000,
+  },
+}
+
+--- Calculate optimal dependency context budget dynamically based on model window
+local function get_automatic_budget(engine, target_file_chars, user_budget)
+  if user_budget and user_budget > 0 then
+    return user_budget
+  end
+  local prof = ENGINE_BUDGET_PROFILES[engine] or ENGINE_BUDGET_PROFILES["agy"]
+  local target_tokens = math.max(1, math.floor(target_file_chars / 4))
+  local available = prof.max_context - target_tokens - prof.headroom
+  if available < 500 then
+    return 500
+  end
+  return math.min(available, prof.default_dep_budget)
+end
+
 --- Run native logical compiler on target file or active buffer
---- @param opts? { file?: string, spec?: string, engine?: string, speak?: boolean, bundle?: boolean, bufnr?: number }
+--- @param opts? { file?: string, spec?: string, engine?: string, speak?: boolean, bundle?: boolean, budget?: number, bufnr?: number }
 function M.lint(opts)
   opts = opts or {}
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
@@ -162,17 +195,26 @@ function M.lint(opts)
     vim.cmd("silent write")
   end
 
+  local lines = vim.fn.readfile(filepath)
+  local target_chars = #table.concat(lines, "\n")
+  local initial_engine = opts.engine or "agy"
+  local auto_budget = get_automatic_budget(initial_engine, target_chars, opts.budget)
+
   -- Assemble source code or hermetic dependency bundle
   -- TODO(lgcc-compressed-ir | tier:B | depends_on:[lgcc-cli-router-hook] | blocks:[lgcc-project-scan]): Design compressed semantic intermediate representation preserving global cross-module invariants.
   -- Description: Implement a compact AST/interface representation (symbol dependency graph and skeletonized type stubs) to keep full repository context in the model's active window without blowing up token limits.
   -- Criterion: review: "Intermediate representation compacts multi-file repository context by >70% while retaining all exported types, signatures, and call invariants"
   local code_section = ""
-  if opts.bundle then
+  local used_budget = nil
+
+  -- Enable smart routing by default or when bundle flag is set
+  if opts.bundle ~= false then
     local lgcc_bin = find_lgcc_bin()
     if lgcc_bin then
-      local res = vim.system({ lgcc_bin, "--bundle", filepath }, { text = true }):wait()
+      local res = vim.system({ lgcc_bin, "--route", filepath, "--budget", tostring(auto_budget), "--format", "ir" }, { text = true }):wait()
       if res.code == 0 and res.stdout and res.stdout ~= "" then
         code_section = res.stdout
+        used_budget = auto_budget
       end
     end
     if code_section == "" then
@@ -187,7 +229,6 @@ function M.lint(opts)
   end
 
   if code_section == "" then
-    local lines = vim.fn.readfile(filepath)
     local numbered_lines = {}
     for i, line in ipairs(lines) do
       table.insert(numbered_lines, string.format("%d: %s", i, line))
@@ -217,7 +258,8 @@ If there are no logic errors, output: CLEAN]]
   local full_prompt = string.format("%s\n\n%s%s", system_prompt, spec_section, code_section)
 
   local initial_engine = opts.engine or "agy"
-  local state = start_ticker(file_basename .. (opts.bundle and " [+deps]" or ""), initial_engine)
+  local budget_label = used_budget and string.format(" [+%dtok]", used_budget) or (opts.bundle and " [+deps]" or "")
+  local state = start_ticker(file_basename .. budget_label, initial_engine)
 
   local function execute_run(engine_name)
     state.engine = engine_name
@@ -328,7 +370,8 @@ end
 vim.api.nvim_create_user_command("Lgcc", function(ctx)
   local fargs = ctx.fargs or {}
   local speak = false
-  local bundle = false
+  local bundle = true -- default to true for smart context routing
+  local user_budget = nil
   local spec_path = nil
   local engine = "agy" -- default to agy, with automatic opencode failover
   local target_file = nil
@@ -343,6 +386,11 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
       speak = true
     elseif arg == "-b" or arg == "--bundle" or arg == "bundle" then
       bundle = true
+    elseif arg == "--no-bundle" or arg == "no-bundle" then
+      bundle = false
+    elseif arg == "--budget" or arg == "budget" then
+      i = i + 1
+      user_budget = tonumber(fargs[i])
     elseif arg == "--opencode" or arg == "opencode" then
       engine = "opencode"
     elseif arg == "--agy" or arg == "agy" then
@@ -367,13 +415,14 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
     engine = engine,
     speak = speak,
     bundle = bundle,
+    budget = user_budget,
   })
 end, {
   nargs = "*",
   complete = function(arglead, cmdline)
     local parts = vim.split(vim.trim(cmdline), "%s+")
     if #parts <= 2 and not cmdline:match("%s+$") then
-      local subcmds = { "clear", "-s", "--speak", "-b", "--bundle", "spec", "--opencode", "--agy", "-l", "--local" }
+      local subcmds = { "clear", "-s", "--speak", "-b", "--bundle", "--no-bundle", "--budget", "spec", "--opencode", "--agy", "-l", "--local" }
       return vim.tbl_filter(function(item)
         return vim.startswith(item, arglead)
       end, subcmds)
