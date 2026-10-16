@@ -1,0 +1,17 @@
+[package]
+name = "syntra-spec-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "C ABI FFI bridge exposing prismpm/prod-codegen contract verification to lgcc C++"
+license = "MIT"
+
+[lib]
+name = "syntra_spec_bridge"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+prod-ir = { path = "/home/yassine/code/prover/vendor/prismpm/vendor/lean4-prod/rust/prod-ir" }
+prod-codegen = { path = "/home/yassine/code/prover/vendor/prismpm/vendor/lean4-prod/rust/prod-codegen" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"

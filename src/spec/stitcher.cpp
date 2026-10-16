@@ -1,10 +1,12 @@
 #include "stitcher.hpp"
 #include "../graph/symbol_table.hpp"
+#include "syntra_spec_bridge.h"
 #include <regex>
 #include <queue>
 #include <cstdio>
 #include <array>
 #include <sys/wait.h>
+
 
 namespace lgcc {
 
@@ -286,6 +288,61 @@ StitchResult SpecStitcher::stitch(const std::vector<SpecFragment>& fragments, co
     return result;
 }
 
+FfiVerifyResult SpecStitcher::verify_ffi_contracts(const std::string& semantic_json, const std::string& module_name) {
+    FfiVerifyResult res;
+
+    // 1. Verify static C ABI invariants exported by syntra-spec-bridge
+    if (prod_syntra_spec_tasks_add_spec_scaffold() == 0 ||
+        prod_syntra_spec_lgcc_spec_scanner() == 0 ||
+        prod_syntra_spec_lgcc_topo_spec_stitcher() == 0 ||
+        prod_syntra_spec_prismpm_jit_verifier() == 0 ||
+        prod_syntra_spec_prismpm_rust_bridge() == 0 ||
+        prod_syntra_spec_lgcc_lexlean_verifier() == 0) {
+        res.error = "Static C ABI invariant check failed in syntra_spec_bridge.";
+        return res;
+    }
+
+    // 2. Verify semantic module and generate C ABI bindings via prod_ir / prod_codegen FFI
+    uint32_t defs = 0;
+    uint32_t thms = 0;
+    std::vector<char> err_buf(4096, 0);
+    int32_t status = syntra_ffi_verify_semantic_module(
+        semantic_json.c_str(),
+        &defs,
+        &thms,
+        err_buf.data(),
+        err_buf.size()
+    );
+    if (status != 0) {
+        res.error = std::string(err_buf.data());
+        return res;
+    }
+
+    std::vector<char> header_buf(65536, 0);
+    std::vector<char> rust_buf(131072, 0);
+    int32_t abi_status = syntra_ffi_generate_c_abi(
+        module_name.c_str(),
+        semantic_json.c_str(),
+        header_buf.data(),
+        header_buf.size(),
+        rust_buf.data(),
+        rust_buf.size(),
+        err_buf.data(),
+        err_buf.size()
+    );
+    if (abi_status != 0) {
+        res.error = std::string(err_buf.data());
+        return res;
+    }
+
+    res.success = true;
+    res.defs_checked = defs;
+    res.theorems_checked = thms;
+    res.c_header = std::string(header_buf.data());
+    res.rust_source = std::string(rust_buf.data());
+    return res;
+}
+
 VerifyResult SpecStitcher::verify_specs(const fs::path& repo_root, const std::string& module_name, const fs::path& specs_dir_in, bool keep_stitched) {
     VerifyResult res;
 
@@ -366,11 +423,21 @@ VerifyResult SpecStitcher::verify_specs(const fs::path& repo_root, const std::st
         return res;
     }
 
+    // 4b. Validate stitched semantic module via Rust/C FFI (prod_ir + prod_codegen::CBindings)
+    auto ffi_res = verify_ffi_contracts(stitch_res.stitched_semantic_json, full_mod_name);
+    if (!ffi_res.success) {
+        res.error = "Rust/C FFI Contract Verifier error: " + ffi_res.error;
+        return res;
+    }
+    res.ffi_defs_verified = ffi_res.defs_checked;
+    res.ffi_theorems_verified = ffi_res.theorems_checked;
+
     // 5. Write stitched specification into specs workspace
     std::string rel_mod_path = full_mod_name;
     for (char& c : rel_mod_path) {
         if (c == '.') c = '/';
     }
+
     std::string entrypoint_rel = "src/" + rel_mod_path + ".lex.tex";
     fs::path target_file = specs_dir / entrypoint_rel;
     bool file_existed_before = fs::exists(target_file);

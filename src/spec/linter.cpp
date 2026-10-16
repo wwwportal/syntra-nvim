@@ -1,7 +1,9 @@
 #include "linter.hpp"
+#include "stitcher.hpp"
 #include <regex>
 #include <cstdio>
 #include <array>
+
 
 namespace lgcc {
 
@@ -282,6 +284,23 @@ LintResult TaskLinter::lint_repository(const fs::path& repo_root) {
     auto resolution_errors = check_staged_resolutions(repo_root, res.tasks);
     res.errors.insert(res.errors.end(), resolution_errors.begin(), resolution_errors.end());
 
+    // Validate in-tree LexLean specification contracts via Rust/C FFI bridge
+    auto frags = SpecStitcher::scan_repository(repo_root);
+    if (!frags.empty()) {
+        auto stitched = SpecStitcher::stitch(frags, "Syntra.Spec");
+        if (!stitched.success) {
+            res.errors.push_back("Specification stitch error: " + stitched.error);
+        } else {
+            auto ffi_res = SpecStitcher::verify_ffi_contracts(stitched.stitched_semantic_json, "Syntra.Spec");
+            if (!ffi_res.success) {
+                res.errors.push_back("FFI Contract Verification Violation: " + ffi_res.error);
+            } else {
+                res.ffi_defs_verified = ffi_res.defs_checked;
+                res.ffi_theorems_verified = ffi_res.theorems_checked;
+            }
+        }
+    }
+
     return res;
 }
 
@@ -299,8 +318,12 @@ void TaskLinter::print_report(const LintResult& res) {
         return;
     }
 
-    std::cout << "[PASS] Verified " << res.tasks.size() << " in-line task contracts across codebase.\n\n";
+    std::cout << "[PASS] Verified " << res.tasks.size() << " in-line task contracts across codebase.\n";
+    std::cout << "[PASS] FFI Contract Verifier (prod_codegen C ABI): "
+              << res.ffi_defs_verified << " definitions, "
+              << res.ffi_theorems_verified << " theorems verified.\n\n";
     std::cout << "Live In-Tree Task DAG:\n";
+
 
     for (const auto& tier : {"A", "B", "C"}) {
         std::vector<const TaskRecord*> tier_tasks;

@@ -253,6 +253,34 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    if (mode == "--emit-c-abi") {
+        fs::path root = fs::current_path();
+        std::string mod_name = "Syntra.Spec";
+        if (argc >= 3) mod_name = argv[2];
+        if (argc >= 4) root = argv[3];
+
+        auto frags = SpecStitcher::scan_repository(root);
+        auto stitch_res = SpecStitcher::stitch(frags, mod_name);
+        if (!stitch_res.success) {
+            std::cerr << "Error stitching specifications: " << stitch_res.error << "\n";
+            return 1;
+        }
+        auto ffi_res = SpecStitcher::verify_ffi_contracts(stitch_res.stitched_semantic_json, mod_name);
+        if (!ffi_res.success) {
+            std::cerr << "FFI C ABI generation failed: " << ffi_res.error << "\n";
+            return 1;
+        }
+        std::cout << "// =============================================================================\n";
+        std::cout << "// C HEADER (prod_codegen::CBindings.header)\n";
+        std::cout << "// =============================================================================\n";
+        std::cout << ffi_res.c_header << "\n";
+        std::cout << "// =============================================================================\n";
+        std::cout << "// RUST IMPLEMENTATION & EXTERN \"C\" WRAPPERS (prod_codegen::CBindings.rust)\n";
+        std::cout << "// =============================================================================\n";
+        std::cout << ffi_res.rust_source;
+        return 0;
+    }
+
     if (mode == "--verify-specs" || mode == "--verify") {
         fs::path root = fs::current_path();
         std::string mod_name = "Foundation.Specification.V1.JITSpec";
@@ -282,6 +310,7 @@ int main(int argc, char* argv[]) {
 
         std::cout << "● Machine-Checked Proof Replay Succeeded!\n";
         std::cout << "  Module:           " << mod_name << "\n";
+        std::cout << "  FFI C ABI Check:  " << res.ffi_defs_verified << " definitions, " << res.ffi_theorems_verified << " theorems verified (prod_codegen)\n";
         std::cout << "  Modules Verified: " << res.modules_verified << "\n";
         if (!res.semantic_id.empty()) {
             std::cout << "  Semantic ID:      " << res.semantic_id << "\n";
@@ -292,6 +321,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  PrismPM Status:   Sound (Zero unproven obligations)\n";
         return 0;
     }
+
 
     if (mode == "--lint-tasks" || mode == "--lint") {
         fs::path root = fs::current_path();

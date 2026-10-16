@@ -32,8 +32,19 @@ struct VerifyResult {
     std::string semantic_id;
     std::string attestation;
     int modules_verified = 0;
+    uint32_t ffi_defs_verified = 0;
+    uint32_t ffi_theorems_verified = 0;
     std::string output;
     std::string stitched_file;
+};
+
+struct FfiVerifyResult {
+    bool success = false;
+    uint32_t defs_checked = 0;
+    uint32_t theorems_checked = 0;
+    std::string error;
+    std::string c_header;
+    std::string rust_source;
 };
 
 class SpecStitcher {
@@ -41,6 +52,7 @@ public:
     static std::vector<SpecFragment> scan_file(const fs::path& filepath);
     static std::vector<SpecFragment> scan_repository(const fs::path& repo_root);
     static StitchResult stitch(const std::vector<SpecFragment>& fragments, const std::string& module_name = "Syntra.StitchedSpec");
+    static FfiVerifyResult verify_ffi_contracts(const std::string& semantic_json, const std::string& module_name = "Syntra.Spec");
     static VerifyResult verify_specs(const fs::path& repo_root, const std::string& module_name = "Foundation.Specification.V1.JITSpec", const fs::path& specs_dir = "", bool keep_stitched = false);
 };
 

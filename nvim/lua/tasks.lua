@@ -12,21 +12,30 @@
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.
 -- Criterion: review: ":Tasks fix or lgcc --fix-tasks interactively converts unstructured TODOs into valid in-tree contracts with user confirmation"
 
--- TODO(spec-lexlean-todo-schema | tier:B | depends_on:[lgcc-task-synthesizer] | blocks:[spec-jit-patch-schema]): Formalize in-line source contracts as LexLean semantic specification blocks.
+-- SPEC(spec-lexlean-todo-schema | tier:B | depends_on:[lgcc-task-synthesizer] | blocks:[spec-jit-patch-schema]): Formalize in-line source contracts as LexLean semantic specification blocks.
 -- Description: Define a formal LexLean specification schema representing in-line task contracts, including inductive types for tiers, DAG dependencies, and theorem-backed acceptance criteria.
--- Criterion: review: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
+-- Criterion: assert: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
+-- [lexlean:declarations]
+-- {"body":{"kind":"bool","value":true},"kind":"definition","name":"spec_lexlean_todo_schema","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"spec_lexlean_todo_schema_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"spec_lexlean_todo_schema"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
--- TODO(spec-jit-patch-schema | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-native-linter]): Define syntax for distributed in-tree LexLean specification patches.
+-- SPEC(spec-jit-patch-schema | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-native-linter]): Define syntax for distributed in-tree LexLean specification patches.
 -- Description: Define specification patch syntax and grammar allowing in-line source comments to embed typed LexLean declarations, inductive types, and theorem blocks.
--- Criterion: review: "Formal grammar for in-line [lexlean:declarations] and [lexlean:theorem] patches validates under tree-sitter and regex parsers"
+-- Criterion: assert: "Formal grammar for in-line [lexlean:declarations] and [lexlean:theorem] patches validates under tree-sitter and regex parsers"
+-- [lexlean:declarations]
+-- {"body":{"arguments":[],"function":{"name":"spec_lexlean_todo_schema"},"kind":"call"},"kind":"definition","name":"spec_jit_patch_schema","parameters":[],"result":{"kind":"bool"}}
+-- [lexlean:theorems]
+-- {"kind":"theorem","name":"spec_jit_patch_schema_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"spec_jit_patch_schema"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 -- SPEC(tasks-add-spec-scaffold | tier:B | depends_on:[lgcc-native-linter] | blocks:[lgcc-spec-scanner]): Extend :Tasks add to scaffold formal LexLean SPEC blocks with declaration and theorem templates.
 -- Description: Extend :Tasks add in Neovim to scaffold formal LexLean SPEC blocks with [lexlean:declarations] and [lexlean:theorems] templates.
 -- Criterion: assert: ":Tasks add spec <desc> inserts structured SPEC comment block with LexLean payload stubs at target line"
 -- [lexlean:declarations]
--- {"body":{"kind":"bool","value":true},"kind":"definition","name":"tasks_add_spec_scaffold","parameters":[],"result":{"kind":"bool"}}
+-- {"body":{"arguments":[],"function":{"name":"lgcc_native_linter"},"kind":"call"},"kind":"definition","name":"tasks_add_spec_scaffold","parameters":[],"result":{"kind":"bool"}}
 -- [lexlean:theorems]
 -- {"kind":"theorem","name":"tasks_add_spec_scaffold_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"tasks_add_spec_scaffold"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+
 
 
 

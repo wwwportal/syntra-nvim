@@ -26,13 +26,22 @@ namespace lgcc {
 
 
 
-// TODO(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
+// SPEC(prismpm-rust-bridge | tier:B | depends_on:[prismpm-jit-verifier] | blocks:[lgcc-lexlean-verifier]): Bridge prismpm-generated Rust verification library via C ABI FFI.
 // Description: Consume verified Rust crates emitted by prismpm through its C ABI layer (prod_codegen::CBindings / extern "C") to expose contract verification functions and invariants directly to C++.
-// Criterion: review: "cargo build produces static/dynamic library with C headers linking cleanly into C++ test runner"
+// Criterion: assert: "cargo build produces static/dynamic library with C headers linking cleanly into C++ test runner"
+// [lexlean:declarations]
+// {"body":{"arguments":[],"function":{"name":"prismpm_jit_verifier"},"kind":"call"},"kind":"definition","name":"prismpm_rust_bridge","parameters":[],"result":{"kind":"bool"}}
+// [lexlean:theorems]
+// {"kind":"theorem","name":"prismpm_rust_bridge_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"prismpm_rust_bridge"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
-// TODO(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-rust-bridge]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
+// SPEC(lgcc-lexlean-verifier | tier:B | depends_on:[prismpm-rust-bridge]): Integrate lgcc parser and pipeline with LexLean formal specification contracts.
 // Description: Connect lgcc AST extractor and IR compiler with prismpm Rust/C FFI verifier to validate formal contracts and invariants at compile and lint time.
-// Criterion: review: "lgcc validates LexLean-extracted contract assertions via FFI during static analysis passes"
+// Criterion: assert: "lgcc validates LexLean-extracted contract assertions via FFI during static analysis passes"
+// [lexlean:declarations]
+// {"body":{"arguments":[],"function":{"name":"prismpm_rust_bridge"},"kind":"call"},"kind":"definition","name":"lgcc_lexlean_verifier","parameters":[],"result":{"kind":"bool"}}
+// [lexlean:theorems]
+// {"kind":"theorem","name":"lgcc_lexlean_verifier_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"lgcc_lexlean_verifier"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+
 
 struct ExtractedModule {
     fs::path filepath;

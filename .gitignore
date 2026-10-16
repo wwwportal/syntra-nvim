@@ -1,4 +1,6 @@
 build/
+target/
+**/target/
 *.tmp
 .DS_Store
 
