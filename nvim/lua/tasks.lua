@@ -16,9 +16,13 @@
 -- Description: Define a formal LexLean specification schema representing in-line task contracts, including inductive types for tiers, DAG dependencies, and theorem-backed acceptance criteria.
 -- Criterion: review: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
 
--- TODO(spec-jit-patch-schema | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-spec-scanner]): Define syntax for distributed in-tree LexLean specification patches.
+-- TODO(spec-jit-patch-schema | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[tasks-add-spec-scaffold]): Define syntax for distributed in-tree LexLean specification patches.
 -- Description: Define specification patch syntax and grammar allowing in-line source comments to embed typed LexLean declarations, inductive types, and theorem blocks.
 -- Criterion: review: "Formal grammar for in-line [lexlean:declarations] and [lexlean:theorem] patches validates under tree-sitter and regex parsers"
+
+-- TODO(tasks-add-spec-scaffold | tier:B | depends_on:[spec-jit-patch-schema] | blocks:[lgcc-spec-scanner]): Extend :Tasks add to scaffold formal LexLean SPEC blocks with declaration and theorem templates.
+-- Description: Extend :Tasks add in Neovim to scaffold formal LexLean SPEC blocks with [lexlean:declarations] and [lexlean:theorems] templates.
+-- Criterion: review: ":Tasks add spec <desc> inserts structured SPEC comment block with LexLean payload stubs at target line"
 
 -- TODO(syntra-plugin-bundle | tier:B | depends_on:[unified-tasks]): Package and version syntra-nvim Debian release with verified task DAG.
 -- Description: Regenerate syntra-nvim .deb and APT Packages index containing the unified tasks and voice modules.

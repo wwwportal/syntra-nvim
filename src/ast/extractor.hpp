@@ -8,7 +8,7 @@ namespace lgcc {
 // Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
 // Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
 
-// TODO(lgcc-spec-scanner | tier:B | depends_on:[spec-jit-patch-schema] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
+// TODO(lgcc-spec-scanner | tier:B | depends_on:[tasks-add-spec-scaffold] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
 // Description: Implement in-line specification patch scanner in lgcc C++ extracting distributed LexLean fragments and dependency tags across all source files.
 // Criterion: review: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
 // [lexlean:declarations]
