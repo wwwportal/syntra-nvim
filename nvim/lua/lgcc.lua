@@ -421,18 +421,48 @@ If there are no logic errors, output: CLEAN]]
               message = item.text,
             })
 
-            -- Attach in-line red comment directly at the end of the line
+            -- Wrap error text and render directly on the line below without big 'x' or underline
+            local source_line = (vim.api.nvim_buf_is_loaded(b) and vim.api.nvim_buf_get_lines(b, lnum, lnum + 1, false)[1]) or ""
+            local indent = source_line:match("^(%s*)") or ""
+            local prefix_indent = indent .. "  "
+            local max_w = math.max(35, (vim.o.columns or 80) - #prefix_indent - 6)
+
+            local wrapped_lines = {}
+            for raw_line in item.text:gmatch("[^\r\n]+") do
+              local current = ""
+              for word in raw_line:gmatch("%S+") do
+                if current == "" then
+                  current = word
+                elseif #current + 1 + #word <= max_w then
+                  current = current .. " " .. word
+                else
+                  table.insert(wrapped_lines, current)
+                  current = word
+                end
+              end
+              if current ~= "" then
+                table.insert(wrapped_lines, current)
+              end
+            end
+            if #wrapped_lines == 0 then
+              table.insert(wrapped_lines, item.text)
+            end
+
+            local virt_lines = {}
+            for _, wline in ipairs(wrapped_lines) do
+              table.insert(virt_lines, { { prefix_indent .. wline, "DiagnosticError" } })
+            end
+
             pcall(vim.api.nvim_buf_set_extmark, b, ns_lgcc, lnum, 0, {
-              virt_text = { { "  ✖ " .. item.text, "DiagnosticError" } },
-              virt_text_pos = "eol",
-              hl_mode = "combine",
+              virt_lines = virt_lines,
+              virt_lines_above = false,
             })
           end
 
           for b, diags in pairs(diags_by_buf) do
             vim.diagnostic.set(ns_lgcc, b, diags, {
               signs = true,
-              underline = true,
+              underline = false,
               virtual_text = false,
             })
           end

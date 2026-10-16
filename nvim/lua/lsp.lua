@@ -22,7 +22,7 @@ vim.api.nvim_create_autocmd("LspAttach", {
 -- Keep background diagnostic display clean and focused.
 vim.diagnostic.config({
   signs = true,
-  underline = true,
+  underline = false,
   virtual_text = false,
   virtual_lines = false,
   severity_sort = true,
