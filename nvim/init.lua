@@ -642,8 +642,8 @@ vim.keymap.set("n", "ZQ", function() smart_quit({ force = true }) end, { desc = 
 -- ── LSP ──
 require("lsp")
 
--- ── Tasks Navigator (Prover DAG & Taskwarrior) ──
-require("tasks")
+-- ── Specification Navigator (Specs DAG & Taskwarrior) ──
+require("specs")
 
 -- ── First-Time Feature Checklist & Onboarding ──
 require("onboarding").setup()

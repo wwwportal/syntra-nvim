@@ -740,9 +740,9 @@ impl TaskLinter {
                 for t in tier_tasks {
                     let rel = t.file.strip_prefix(&res.root).unwrap_or(&t.file).display();
                     let badge = match t.maturity.as_str() {
-                        "VERIFIED" => "🟢 [VERIFIED]",
-                        "DRAFT" => "🟠 [DRAFT SPEC]",
-                        _ => "🟡 [INFORMAL - Needs Lean 4 Spec]",
+                        "VERIFIED" => "[VERIFIED]",
+                        "DRAFT" => "[DRAFT SPEC]",
+                        _ => "[INFORMAL - Needs Lean 4 Spec]",
                     };
                     print!("  ● {} ({}:{}) {}", t.id, rel, t.line, badge);
                     if !t.depends_on.is_empty() {
