@@ -111,8 +111,9 @@ end
 
 local function get_lgcc_bin()
   local candidates = {
-    vim.fn.expand("~/.config/nvim/bin/lgcc"),
     vim.fn.expand("~/code/syntra-nvim/bin/lgcc"),
+    vim.fn.expand("~/.config/nvim/bin/lgcc"),
+    "/usr/local/bin/lgcc",
     "/usr/bin/lgcc",
   }
   for _, c in ipairs(candidates) do
@@ -123,11 +124,11 @@ local function get_lgcc_bin()
   return nil
 end
 
---- Find lint_tasks.py in active split, buffer, terminal cwd, git root, or known repositories
+--- Find repository root for Task Graph linting in active split, buffer, terminal cwd, git root, or known repositories
 --- @param target? string
 local function find_lint_tasks(target)
-  local default_prover = vim.fn.expand("~/code/prover/scripts/lint_tasks.py")
-  local default_syntra = vim.fn.expand("~/code/syntra-nvim/scripts/lint_tasks.py")
+  local default_prover = vim.fn.expand("~/code/prover")
+  local default_syntra = vim.fn.expand("~/code/syntra-nvim")
 
   if target == "prover" and vim.uv.fs_stat(default_prover) then
     return default_prover
@@ -138,36 +139,22 @@ local function find_lint_tasks(target)
   local dirs = get_active_dirs()
 
   for _, dir in ipairs(dirs) do
-    local candidates = {
-      dir .. "/scripts/lint_tasks.py",
-      dir .. "/lint_tasks.py",
-      dir .. "/../scripts/lint_tasks.py",
-    }
     local git_root = vim.fs.root(dir, ".git")
     if git_root then
-      table.insert(candidates, git_root .. "/scripts/lint_tasks.py")
+      return git_root
     end
-
-    for _, path in ipairs(candidates) do
-      if vim.uv.fs_stat(path) then
-        return path
-      end
-    end
-
-    -- If any active directory path contains "prover", check default prover path
     if dir:match("/prover") and vim.uv.fs_stat(default_prover) then
       return default_prover
     end
-    -- If any active directory path contains "syntra", check default syntra path
     if dir:match("/syntra") and vim.uv.fs_stat(default_syntra) then
       return default_syntra
     end
   end
 
-  if target == "prover" and vim.uv.fs_stat(default_prover) then
-    return default_prover
-  elseif (target == "syntra" or target == "syntra-nvim") and vim.uv.fs_stat(default_syntra) then
+  if vim.uv.fs_stat(default_syntra) then
     return default_syntra
+  elseif vim.uv.fs_stat(default_prover) then
+    return default_prover
   end
 
   return nil
@@ -256,18 +243,17 @@ local function setup_qf_keymaps(origin_win)
   end, { buffer = qf_buf, silent = true, noremap = true, desc = "Jump to task and close Tasks split" })
 end
 
---- Show in-tree Source-First TODO DAG
-local function show_repo_tasks(script_path, origin_win, target_task_id)
+--- Show in-tree Source-First Task Graph
+local function show_repo_tasks(repo_path, origin_win, target_task_id)
   local lgcc = get_lgcc_bin()
-  local out
-  if lgcc and vim.fn.executable(lgcc) == 1 then
-    local target_dir = vim.fs.root(script_path, ".git") or vim.fn.fnamemodify(script_path, ":h:h")
-    out = vim.fn.system({ lgcc, "--lint-tasks", "--json", target_dir })
-  else
-    out = vim.fn.system({ "python3", script_path, "--json" })
+  if not lgcc or vim.fn.executable(lgcc) ~= 1 then
+    vim.notify("tasks: Native lgcc binary not found", vim.log.levels.ERROR)
+    return
   end
+  local target_dir = vim.fs.root(repo_path, ".git") or repo_path
+  local out = vim.fn.system({ lgcc, "--lint-tasks", "--json", target_dir })
   if vim.v.shell_error ~= 0 and (not out or out == "") then
-    vim.notify("tasks: Failed to execute task linter", vim.log.levels.ERROR)
+    vim.notify("tasks: Failed to execute native lgcc task linter", vim.log.levels.ERROR)
     return
   end
 
@@ -636,9 +622,9 @@ local function resolve_target_file(spec_file, description, origin_win)
 
   -- Determine active repository root
   local repo_root = nil
-  local lint_script = find_lint_tasks()
-  if lint_script then
-    repo_root = vim.fs.root(lint_script, ".git") or vim.fn.fnamemodify(lint_script, ":p:h:h")
+  local lint_root = find_lint_tasks()
+  if lint_root then
+    repo_root = vim.fs.root(lint_root, ".git") or lint_root
   end
 
   if not repo_root or repo_root == "" then

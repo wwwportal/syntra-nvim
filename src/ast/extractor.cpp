@@ -142,32 +142,55 @@ ExtractedModule Extractor::extract_cpp(const fs::path& filepath, const std::stri
                     }
                     brace_depth += (open_b - close_b);
                     continue;
-                } else if (std::regex_search(line, m, fn_re)) {
-                    std::string fname = m[1].str();
-                    // Extract short name after :: if present
-                    auto colon_pos = fname.rfind("::");
-                    std::string short_name = (colon_pos != std::string::npos) ? fname.substr(colon_pos + 2) : fname;
-
-                    // Reject variable declarations with constructor syntax when inside function or lacking return type keywords
-                    bool is_decl_or_def = (open_b > 0) || (brace_depth == namespace_depth + class_depth && !starts_with(trimmed, "std::regex ") && !starts_with(trimmed, "std::vector<") && !starts_with(trimmed, "std::stringstream "));
-                    if (!invalid_fn_names.count(short_name) && is_decl_or_def) {
-                        Symbol sym;
-                        sym.kind = (colon_pos != std::string::npos || !current_class.empty()) ? "method" : "function";
-                        if (colon_pos == std::string::npos && !current_class.empty()) {
-                            sym.name = current_class + "::" + short_name;
-                        } else {
-                            sym.name = fname;
+                } else {
+                    std::string cand_line = trimmed;
+                    size_t extra_lines = 0;
+                    int extra_open_b = 0;
+                    int extra_close_b = 0;
+                    if (cand_line.find('(') != std::string::npos && cand_line.find(')') == std::string::npos) {
+                        while (i + extra_lines + 1 < lines.size() && extra_lines < 6) {
+                            extra_lines++;
+                            std::string next_t = trim(lines[i + extra_lines]);
+                            cand_line += " " + next_t;
+                            int ob = 0, cb = 0;
+                            count_braces_outside_strings(lines[i + extra_lines], ob, cb);
+                            extra_open_b += ob;
+                            extra_close_b += cb;
+                            if (next_t.find(')') != std::string::npos) break;
                         }
-                        sym.line = line_num;
-                        sym.end_line = line_num;
-                        auto brace_pos = trimmed.find('{');
-                        sym.signature = (brace_pos != std::string::npos) ? trim(trimmed.substr(0, brace_pos)) : trimmed;
-                        sym.is_top = current_class.empty();
-                        mod.symbols.push_back(sym);
+                    }
 
-                        if (open_b > close_b) {
-                            in_fn_Idx = static_cast<int>(mod.symbols.size()) - 1;
-                            fn_entry_brace = brace_depth;
+                    if (std::regex_search(cand_line, m, fn_re)) {
+                        std::string fname = m[1].str();
+                        auto colon_pos = fname.rfind("::");
+                        std::string short_name = (colon_pos != std::string::npos) ? fname.substr(colon_pos + 2) : fname;
+
+                        int total_open_b = open_b + extra_open_b;
+                        int total_close_b = close_b + extra_close_b;
+                        bool is_decl_or_def = (total_open_b > 0) || (brace_depth == namespace_depth + class_depth && !starts_with(trimmed, "std::regex ") && !starts_with(trimmed, "std::vector<") && !starts_with(trimmed, "std::stringstream "));
+                        if (!invalid_fn_names.count(short_name) && is_decl_or_def) {
+                            Symbol sym;
+                            sym.kind = (colon_pos != std::string::npos || !current_class.empty()) ? "method" : "function";
+                            if (colon_pos == std::string::npos && !current_class.empty()) {
+                                sym.name = current_class + "::" + short_name;
+                            } else {
+                                sym.name = fname;
+                            }
+                            sym.line = line_num;
+                            i += extra_lines;
+                            line_num = static_cast<int>(i + 1);
+                            sym.end_line = line_num;
+                            auto brace_pos = cand_line.find('{');
+                            sym.signature = (brace_pos != std::string::npos) ? trim(cand_line.substr(0, brace_pos)) : cand_line;
+                            sym.is_top = current_class.empty();
+                            mod.symbols.push_back(sym);
+
+                            if (total_open_b > total_close_b) {
+                                in_fn_Idx = static_cast<int>(mod.symbols.size()) - 1;
+                                fn_entry_brace = brace_depth;
+                            }
+                            open_b = total_open_b;
+                            close_b = total_close_b;
                         }
                     }
                 }
@@ -345,6 +368,9 @@ ExtractedModule Extractor::extract_rust(const fs::path& filepath, const std::str
         std::string trimmed = trim(line);
         if (starts_with(trimmed, "//")) continue;
 
+        int open_b = 0, close_b = 0;
+        count_braces_outside_strings(line, open_b, close_b);
+
         std::smatch m;
         if (std::regex_search(line, m, use_re)) {
             Import imp;
@@ -361,30 +387,40 @@ ExtractedModule Extractor::extract_rust(const fs::path& filepath, const std::str
             sym.signature = (bpos != std::string::npos) ? trim(trimmed.substr(0, bpos)) : trimmed;
             sym.is_top = true;
             mod.symbols.push_back(sym);
-            if (line.find('{') != std::string::npos && line.find('}') == std::string::npos) {
+            if (open_b > close_b) {
                 active_sym = static_cast<int>(mod.symbols.size()) - 1;
                 entry_brace = brace_depth;
             }
         } else if (active_sym == -1 && std::regex_search(line, m, fn_re)) {
+            std::string cand_sig = trimmed;
+            size_t extra_lines = 0;
+            while (cand_sig.find('{') == std::string::npos && cand_sig.find(';') == std::string::npos && i + extra_lines + 1 < lines.size() && extra_lines < 8) {
+                extra_lines++;
+                std::string next_t = trim(lines[i + extra_lines]);
+                cand_sig += " " + next_t;
+                int ob = 0, cb = 0;
+                count_braces_outside_strings(lines[i + extra_lines], ob, cb);
+                open_b += ob;
+                close_b += cb;
+            }
             Symbol sym;
             sym.kind = "function";
             sym.name = m[1].str();
             sym.line = line_num;
+            i += extra_lines;
+            line_num = static_cast<int>(i + 1);
             sym.end_line = line_num;
-            auto bpos = trimmed.find('{');
-            sym.signature = (bpos != std::string::npos) ? trim(trimmed.substr(0, bpos)) : trimmed;
+            auto bpos = cand_sig.find('{');
+            sym.signature = (bpos != std::string::npos) ? trim(cand_sig.substr(0, bpos)) : cand_sig;
             sym.is_top = true;
             mod.symbols.push_back(sym);
-            if (line.find('{') != std::string::npos && line.find('}') == std::string::npos) {
+            if (open_b > close_b) {
                 active_sym = static_cast<int>(mod.symbols.size()) - 1;
                 entry_brace = brace_depth;
             }
         }
 
-        for (char c : line) {
-            if (c == '{') brace_depth++;
-            else if (c == '}') brace_depth--;
-        }
+        brace_depth += (open_b - close_b);
         if (brace_depth < 0) brace_depth = 0;
 
         if (active_sym != -1 && brace_depth <= entry_brace) {

@@ -14,12 +14,19 @@ OUTPUT_DEB="$REPO_ROOT/${PKG_NAME}_${VERSION}_all.deb"
 echo "==> Preparing build staging directory..."
 rm -rf "$REPO_ROOT/build" "$OUTPUT_DEB"
 mkdir -p "$STAGING_DIR/DEBIAN"
-mkdir -p "$STAGING_DIR/usr/share/syntra-nvim/config"
-mkdir -p "$STAGING_DIR/etc/skel/.config/nvim"
+mkdir -p "$STAGING_DIR/usr/local/bin"
+mkdir -p "$STAGING_DIR/usr/share/syntra-nvim/config/bin"
+mkdir -p "$STAGING_DIR/etc/skel/.config/nvim/bin"
 
-echo "==> Bundling Neovim configuration..."
+echo "==> Bundling Neovim configuration & native lgcc compiler..."
 cp -r "$REPO_ROOT/nvim/"* "$STAGING_DIR/usr/share/syntra-nvim/config/"
 cp -r "$REPO_ROOT/nvim/"* "$STAGING_DIR/etc/skel/.config/nvim/"
+if [ -x "$REPO_ROOT/bin/lgcc" ]; then
+    cp "$REPO_ROOT/bin/lgcc" "$STAGING_DIR/usr/local/bin/lgcc"
+    cp "$REPO_ROOT/bin/lgcc" "$STAGING_DIR/usr/share/syntra-nvim/config/bin/lgcc"
+    cp "$REPO_ROOT/bin/lgcc" "$STAGING_DIR/etc/skel/.config/nvim/bin/lgcc"
+    chmod 755 "$STAGING_DIR/usr/local/bin/lgcc" "$STAGING_DIR/usr/share/syntra-nvim/config/bin/lgcc" "$STAGING_DIR/etc/skel/.config/nvim/bin/lgcc"
+fi
 
 echo "==> Generating DEBIAN/control..."
 cat << EOF > "$STAGING_DIR/DEBIAN/control"
@@ -28,10 +35,10 @@ Version: $VERSION
 Section: editors
 Priority: optional
 Architecture: all
-Depends: git, curl, ripgrep, python3, tar, gzip, ca-certificates
+Depends: git, curl, ripgrep, tar, gzip, ca-certificates
 Maintainer: Syntra <support@syntra.io>
 Description: High-performance Neovim setup with monochrome aesthetics and tiling
- Provisions modern Neovim (v0.10+), Lean 4 formal verification hooks,
+ Provisions modern Neovim (v0.10+), native C++20/Rust lgcc Code Graph & Task Graph engine,
  and custom monochrome window and terminal tiling multiplexer.
 EOF
 

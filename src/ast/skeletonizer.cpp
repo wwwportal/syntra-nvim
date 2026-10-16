@@ -55,7 +55,8 @@ std::string Skeletonizer::skeletonize_cpp(const fs::path&, const std::string& co
                 trimmed.find("namespace ") == std::string::npos) {
                 
                 auto brace_pos = line.rfind('{');
-                result += line.substr(0, brace_pos) + " { /* stub */ }\n";
+                bool is_init = (line.substr(0, brace_pos).find('=') != std::string::npos);
+                result += line.substr(0, brace_pos) + (is_init ? "{ /* init */ };\n" : " { /* stub */ }\n");
                 brace_depth += (open_b - close_b);
                 if (brace_depth > namespace_depth) {
                     in_fn_body = true;
@@ -200,6 +201,7 @@ std::string Skeletonizer::skeletonize_rust(const fs::path&, const std::string& c
     auto lines = split_lines(content);
     std::string result;
     int brace_depth = 0;
+    bool in_fn_header = false;
     bool in_fn_body = false;
     int fn_entry_brace = 0;
 
@@ -214,15 +216,26 @@ std::string Skeletonizer::skeletonize_rust(const fs::path&, const std::string& c
         int close_b = 0;
         count_braces_outside_strings(line, open_b, close_b);
 
-        if (!in_fn_body && std::regex_search(line, fn_re) && open_b > 0) {
-            auto bpos = line.rfind('{');
-            result += line.substr(0, bpos) + "{ /* stub */ }\n";
-            fn_entry_brace = brace_depth;
-            brace_depth += (open_b - close_b);
-            if (brace_depth > fn_entry_brace) {
-                in_fn_body = true;
+        if (!in_fn_body && (in_fn_header || std::regex_search(line, fn_re))) {
+            if (open_b > 0) {
+                auto bpos = line.rfind('{');
+                result += line.substr(0, bpos) + "{ /* stub */ }\n";
+                fn_entry_brace = brace_depth;
+                brace_depth += (open_b - close_b);
+                in_fn_header = false;
+                if (brace_depth > fn_entry_brace) {
+                    in_fn_body = true;
+                }
+                continue;
+            } else if (ends_with(trimmed, ";")) {
+                in_fn_header = false;
+                result += line + "\n";
+                continue;
+            } else {
+                in_fn_header = true;
+                result += line + "\n";
+                continue;
             }
-            continue;
         }
 
         if (in_fn_body) {

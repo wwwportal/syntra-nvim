@@ -127,18 +127,6 @@ local function find_lgcc_bin()
   return nil
 end
 
---- Locate bundle_ir.py script (fallback)
-local function find_bundle_script()
-  local candidates = {
-    vim.fn.expand("~/code/syntra-nvim/scripts/bundle_ir.py"),
-    vim.fn.expand("~/.config/nvim/scripts/bundle_ir.py"),
-  }
-  for _, p in ipairs(candidates) do
-    if vim.uv.fs_stat(p) then return p end
-  end
-  return nil
-end
-
 --- Known model context windows and budget profiles
 local ENGINE_BUDGET_PROFILES = {
   ["local"] = {
@@ -221,15 +209,6 @@ function M.lint(opts)
       if res.code == 0 and res.stdout and res.stdout ~= "" then
         code_section = res.stdout
         used_budget = auto_budget
-      end
-    end
-    if code_section == "" and not is_dir then
-      local bscript = find_bundle_script()
-      if bscript then
-        local res = vim.system({ "python3", bscript, "--bundle", filepath }, { text = true }):wait()
-        if res.code == 0 and res.stdout and res.stdout ~= "" then
-          code_section = res.stdout
-        end
       end
     end
   end
