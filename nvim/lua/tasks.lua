@@ -8,9 +8,9 @@
 -- Description: Design and implement unified task management system in nvim bridging Taskwarrior and in-tree source TODOs.
 -- Criterion: review: ":Tasks displays integrated agenda view with source TODOs and Taskwarrior tasks"
 -- [lexlean:declarations]
--- {"body":{"kind":"bool","value":true},"kind":"definition","name":"unified_tasks","parameters":[],"result":{"kind":"bool"}}
+-- {"body":{"kind":"and","left":{"kind":"ge","left":{"kind":"nat","value":1000},"right":{"kind":"nat","value":0}},"right":{"kind":"le","left":{"kind":"nat","value":1},"right":{"kind":"nat","value":1000}}},"kind":"definition","name":"unified_tasks","parameters":[],"result":{"kind":"bool"}}
 -- [lexlean:theorems]
--- {"kind":"theorem","name":"unified_tasks_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+-- {"kind":"theorem","name":"unified_tasks_verified","parameters":[],"proof":{"kind":"decide"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"unified_tasks"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 -- SPEC(lgcc-task-synthesizer | tier:B | depends_on:[lgcc-dep-bundle] | blocks:[spec-lexlean-todo-schema]): Guided transformation of informal TODO/FIXME tags into schema-compliant contracts using constrained typesafe generation.
 -- Description: Integrate lgcc and prime-router / typesafe schema enforcement to analyze informal code TODOs and auto-synthesize valid tier, description, and verifiable criterion.

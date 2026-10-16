@@ -15,3 +15,5 @@ __pycache__/
 *.pem
 *.env*
 data/
+.prism/
+specs/.lexlean/

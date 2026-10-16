@@ -1,6 +1,7 @@
 use super::stitcher::lower_and_verify_semantic_json;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -157,6 +158,12 @@ impl TaskLinter {
         }
 
         if !stitched_declarations.is_empty() {
+            let conformance_errors = Self::validate_prismpm_semantic_conformance(
+                &stitched_declarations,
+                &stitched_theorems,
+            );
+            res.errors.extend(conformance_errors);
+
             let semantic_json = format!(
                 r#"{{"declarations": [{}], "theorems": [{}]}}"#,
                 stitched_declarations.join(","),
@@ -409,6 +416,86 @@ impl TaskLinter {
                             "Anti-Erasure Violation: Task '{}' is being removed without staged proof log in logs/ referencing '{}'.",
                             tid, tid
                         ));
+                    }
+                }
+            }
+        }
+
+        errors
+    }
+
+    fn validate_prismpm_semantic_conformance(
+        declarations: &[String],
+        theorems: &[String],
+    ) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        // 1. Domain Entities Requirement:
+        // PrismPM specifications must define the project's core domain entities.
+        let mut defined_types = HashSet::new();
+        let mut def_bodies: HashMap<String, Value> = HashMap::new();
+
+        for d_str in declarations {
+            if let Ok(v) = serde_json::from_str::<Value>(d_str) {
+                let kind = v.get("kind").and_then(Value::as_str).unwrap_or("");
+                let name = v.get("name").and_then(Value::as_str).unwrap_or("");
+                if kind == "inductive" || kind == "structure" {
+                    defined_types.insert(name.to_string());
+                } else if kind == "definition" {
+                    if let Some(b) = v.get("body") {
+                        def_bodies.insert(name.to_string(), b.clone());
+                    }
+                }
+            }
+        }
+
+        let required_entities = ["TaskTier", "TaskRecord", "ContextBudget", "SymbolNode"];
+        for entity in &required_entities {
+            if !defined_types.contains(*entity) {
+                errors.push(format!(
+                    "PrismPM Domain Model Violation: Missing required domain entity '{}'. PrismPM specifications must formally define project domain types (inductive/structure).",
+                    entity
+                ));
+            }
+        }
+
+        // 2. Anti-Vacuity / Anti-Tautology Rule:
+        // Reject trivial reflexivity identity proofs with zero parameters and literal true bodies.
+        for t_str in theorems {
+            if let Ok(v) = serde_json::from_str::<Value>(t_str) {
+                let name = v.get("name").and_then(Value::as_str).unwrap_or("unnamed");
+                let proof_kind = v.get("proof").and_then(|p| p.get("kind")).and_then(Value::as_str).unwrap_or("");
+                let params = v.get("parameters").and_then(Value::as_array);
+
+                if proof_kind == "reflexivity" && params.map_or(false, |p| p.is_empty()) {
+                    if let Some(stmt) = v.get("statement") {
+                        let stmt_kind = stmt.get("kind").and_then(Value::as_str).unwrap_or("");
+                        let right_val = stmt.get("right");
+                        let is_right_true = right_val
+                            .and_then(|r| r.get("value"))
+                            .and_then(Value::as_bool)
+                            == Some(true);
+
+                        if stmt_kind == "eq" && is_right_true {
+                            if let Some(left) = stmt.get("left") {
+                                if let Some(fn_name) = left.get("function").and_then(|f| f.get("name")).and_then(Value::as_str) {
+                                    let args = left.get("arguments").and_then(Value::as_array);
+                                    if args.map_or(false, |a| a.is_empty()) {
+                                        // Check if called function has a trivial body
+                                        if let Some(body) = def_bodies.get(fn_name) {
+                                            let is_trivial_body = body.get("kind").and_then(Value::as_str) == Some("bool")
+                                                && body.get("value").and_then(Value::as_bool) == Some(true);
+                                            if is_trivial_body {
+                                                errors.push(format!(
+                                                    "PrismPM Anti-Vacuity Violation: Theorem '{}' is a vacuous reflexivity tautology (0 parameters, returns constant true). Contracts must express non-trivial domain invariants or property constraints over input parameters.",
+                                                    name
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

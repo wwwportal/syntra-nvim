@@ -413,6 +413,68 @@ pub struct LoweredSpec {
     pub theorems_verified: u32,
 }
 
+fn verify_theorem_statement(
+    name: &str,
+    params_arr: &[Value],
+    stmt: &Value,
+    base_env: &HashMap<String, EvalVal>,
+    defs_map: &HashMap<String, Definition>,
+) -> Result<(), String> {
+    let stmt_expr = lower_expr(stmt)?;
+    if params_arr.is_empty() {
+        let val = eval_expr(&stmt_expr, base_env, defs_map)?;
+        if val != EvalVal::Bool(true) {
+            return Err(format!(
+                "theorem `{name}` statement evaluated to `{val:?}` instead of `Bool(true)`"
+            ));
+        }
+    } else {
+        let mut witness_envs = vec![base_env.clone()];
+        for p in params_arr {
+            let pname = p.get("name").and_then(Value::as_str).unwrap_or("x");
+            let ptype = p
+                .get("type")
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    p.get("type")
+                        .and_then(|t| t.get("kind"))
+                        .and_then(Value::as_str)
+                })
+                .unwrap_or("nat");
+            let mut next_envs = Vec::new();
+            for env in &witness_envs {
+                let sample_vals = match ptype {
+                    "bool" => vec![EvalVal::Bool(true), EvalVal::Bool(false)],
+                    "nat" => vec![
+                        EvalVal::Nat(0),
+                        EvalVal::Nat(1),
+                        EvalVal::Nat(42),
+                        EvalVal::Nat(1000),
+                    ],
+                    "int" => vec![EvalVal::Int(-5), EvalVal::Int(0), EvalVal::Int(42)],
+                    "string" => vec![EvalVal::String("test".into()), EvalVal::String("".into())],
+                    _ => vec![EvalVal::Nat(0)],
+                };
+                for val in sample_vals {
+                    let mut e = env.clone();
+                    e.insert(pname.to_string(), val);
+                    next_envs.push(e);
+                }
+            }
+            witness_envs = next_envs;
+        }
+        for env in &witness_envs {
+            let val = eval_expr(&stmt_expr, env, defs_map)?;
+            if val != EvalVal::Bool(true) {
+                return Err(format!(
+                    "theorem `{name}` invariant violated under witness environment: evaluated to `{val:?}`"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn lower_and_verify_semantic_json(
     module_name: &str,
     semantic_json: &str,
@@ -558,19 +620,11 @@ pub fn lower_and_verify_semantic_json(
                     .get("parameters")
                     .and_then(Value::as_array)
                     .ok_or_else(|| format!("theorem `{name}` missing parameters"))?;
-                if params_arr.is_empty() {
-                    let stmt = decl
-                        .get("statement")
-                        .ok_or_else(|| format!("theorem `{name}` missing statement"))?;
-                    let stmt_expr = lower_expr(stmt)?;
-                    let val = eval_expr(&stmt_expr, &eval_env, &defs_map)?;
-                    if val != EvalVal::Bool(true) {
-                        return Err(format!(
-                            "theorem `{name}` statement evaluated to `{val:?}` instead of `Bool(true)`"
-                        ));
-                    }
-                    theorems_verified += 1;
-                }
+                let stmt = decl
+                    .get("statement")
+                    .ok_or_else(|| format!("theorem `{name}` missing statement"))?;
+                verify_theorem_statement(name, params_arr, stmt, &eval_env, &defs_map)?;
+                theorems_verified += 1;
             }
             other => {
                 return Err(format!("unsupported declaration kind `{other}`"));
@@ -588,19 +642,11 @@ pub fn lower_and_verify_semantic_json(
                 .get("parameters")
                 .and_then(Value::as_array)
                 .ok_or_else(|| format!("theorem `{name}` missing parameters"))?;
-            if params_arr.is_empty() {
-                let stmt = thm
-                    .get("statement")
-                    .ok_or_else(|| format!("theorem `{name}` missing statement"))?;
-                let stmt_expr = lower_expr(stmt)?;
-                let val = eval_expr(&stmt_expr, &eval_env, &defs_map)?;
-                if val != EvalVal::Bool(true) {
-                    return Err(format!(
-                        "theorem `{name}` statement evaluated to `{val:?}` instead of `Bool(true)`"
-                    ));
-                }
-                theorems_verified += 1;
-            }
+            let stmt = thm
+                .get("statement")
+                .ok_or_else(|| format!("theorem `{name}` missing statement"))?;
+            verify_theorem_statement(name, params_arr, stmt, &eval_env, &defs_map)?;
+            theorems_verified += 1;
         }
     }
 

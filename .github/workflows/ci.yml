@@ -28,6 +28,10 @@ jobs:
           ref: 09f8b916023cbb7db945b8e8267eebba25965f26
           path: vendor/prismpm
 
+      - name: Apply Local Execution Patch to PrismPM Action
+        run: |
+          git -C vendor/prismpm apply $GITHUB_WORKSPACE/.github/patches/prismpm-action.patch
+
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -61,6 +65,13 @@ jobs:
           mkdir -p ~/.cargo/bin
           cp vendor/prismpm/vendor/lexlean/target/debug/lexlean ~/.cargo/bin/
           cp vendor/prismpm/target/debug/prismpm ~/.cargo/bin/
+
+      - name: Run PrismPM Official Action Spec Check
+        uses: ./vendor/prismpm/action
+        with:
+          sdk-image: local
+          command: check
+          context: specs
 
       - name: Build lgcc Compiler
         run: |

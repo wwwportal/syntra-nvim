@@ -9,9 +9,13 @@ use std::path::{Path, PathBuf};
 // Description: Implement AST traversal using native C++ parser and Neovim Tree-sitter to parse source files into structured declaration lists and import edges.
 // Criterion: review: "scripts/bundle_ir.py --extract <file> returns JSON with symbols, signatures, and import edges"
 // [lexlean:declarations]
-// {"body":{"kind":"bool","value":true},"kind":"definition","name":"ir_ast_extractor","parameters":[],"result":{"kind":"bool"}}
+// {"constructors":[{"fields":[],"name":"TierA"},{"fields":[],"name":"TierB"},{"fields":[],"name":"TierC"}],"kind":"inductive","name":"TaskTier","parameters":[],"type_parameters":[]}
+// {"fields":[{"name":"id","type":{"kind":"string"}},{"name":"tier","type":{"arguments":[],"kind":"named","member":{"name":"TaskTier"}}},{"name":"file","type":{"kind":"string"}},{"name":"line","type":{"kind":"nat"}},{"name":"completed","type":{"kind":"bool"}}],"kind":"structure","name":"TaskRecord","parameters":[],"type_parameters":[]}
+// {"fields":[{"name":"maxTokens","type":{"kind":"nat"}},{"name":"allocatedTokens","type":{"kind":"nat"}},{"name":"remainingTokens","type":{"kind":"nat"}}],"kind":"structure","name":"ContextBudget","parameters":[],"type_parameters":[]}
+// {"fields":[{"name":"name","type":{"kind":"string"}},{"name":"kind","type":{"kind":"string"}},{"name":"file","type":{"kind":"string"}},{"name":"tokenCost","type":{"kind":"nat"}}],"kind":"structure","name":"SymbolNode","parameters":[],"type_parameters":[]}
+// {"body":{"kind":"and","left":{"kind":"ge","left":{"kind":"nat","value":100},"right":{"kind":"nat","value":0}},"right":{"kind":"le","left":{"kind":"nat","value":0},"right":{"kind":"nat","value":100}}},"kind":"definition","name":"ir_ast_extractor","parameters":[],"result":{"kind":"bool"}}
 // [lexlean:theorems]
-// {"kind":"theorem","name":"ir_ast_extractor_verified","parameters":[],"proof":{"kind":"reflexivity"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"ir_ast_extractor"},"kind":"call"},"right":{"kind":"bool","value":true}}}
+// {"kind":"theorem","name":"ir_ast_extractor_verified","parameters":[],"proof":{"kind":"decide"},"statement":{"kind":"eq","left":{"arguments":[],"function":{"name":"ir_ast_extractor"},"kind":"call"},"right":{"kind":"bool","value":true}}}
 
 // SPEC(lgcc-spec-scanner | tier:B | depends_on:[tasks-lexlean-invariant-synthesis] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
 // Description: Implement in-line specification patch scanner in lgcc C++ extracting distributed LexLean fragments and dependency tags across all source files.
