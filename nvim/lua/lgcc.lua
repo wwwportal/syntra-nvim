@@ -207,6 +207,7 @@ end
 function M.lint(opts)
   opts = opts or {}
   local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
+  local origin_win = opts.win or vim.api.nvim_get_current_win()
   local filepath = (opts.file and opts.file ~= "") and vim.fn.expand(opts.file) or vim.api.nvim_buf_get_name(bufnr)
 
   local stat = (filepath ~= "") and vim.uv.fs_stat(filepath) or nil
@@ -435,23 +436,40 @@ If there are no logic errors, output: CLEAN]]
               message = item.text,
             })
 
-            -- Wrap error text and render directly on the line below without big 'x' or underline
+            -- Wrap error text based on the actual target split window width (not full columns)
+            local target_win = vim.fn.bufwinid(b)
+            local win_w = (target_win ~= -1 and vim.api.nvim_win_is_valid(target_win) and vim.api.nvim_win_get_width(target_win))
+              or (origin_win and vim.api.nvim_win_is_valid(origin_win) and vim.api.nvim_win_get_width(origin_win))
+              or vim.api.nvim_win_get_width(0)
+
             local source_line = (vim.api.nvim_buf_is_loaded(b) and vim.api.nvim_buf_get_lines(b, lnum, lnum + 1, false)[1]) or ""
             local indent = source_line:match("^(%s*)") or ""
             local prefix_indent = indent .. "  "
-            local max_w = math.max(35, (vim.o.columns or 80) - #prefix_indent - 6)
+            -- Account for line number column, sign column, and right padding (8-10 cols)
+            local text_area_w = math.max(30, win_w - 9)
+            local max_w = math.max(25, text_area_w - #prefix_indent)
 
             local wrapped_lines = {}
             for raw_line in item.text:gmatch("[^\r\n]+") do
               local current = ""
               for word in raw_line:gmatch("%S+") do
-                if current == "" then
-                  current = word
-                elseif #current + 1 + #word <= max_w then
-                  current = current .. " " .. word
-                else
-                  table.insert(wrapped_lines, current)
-                  current = word
+                while #word > max_w do
+                  if current ~= "" then
+                    table.insert(wrapped_lines, current)
+                    current = ""
+                  end
+                  table.insert(wrapped_lines, word:sub(1, max_w))
+                  word = word:sub(max_w + 1)
+                end
+                if word ~= "" then
+                  if current == "" then
+                    current = word
+                  elseif #current + 1 + #word <= max_w then
+                    current = current .. " " .. word
+                  else
+                    table.insert(wrapped_lines, current)
+                    current = word
+                  end
                 end
               end
               if current ~= "" then
