@@ -47,14 +47,6 @@ local features = {
         check_dep = function() return vim.fn.executable("task") == 1 end,
         dep_hint = "executable: task (taskwarrior)",
     },
-    {
-        id = "lean4",
-        name = "Lean 4 Interactive LSP (Infoview)",
-        desc = "Optional interactive theorem proving LSP (unneeded if using lean-dojo/pantograph)",
-        enabled = false,
-        check_dep = function() return vim.fn.executable("elan") == 1 or vim.fn.executable("lean") == 1 end,
-        dep_hint = "executable: elan / lean4 (disabled by default to save RAM)",
-    },
 }
 
 function M.load_config()

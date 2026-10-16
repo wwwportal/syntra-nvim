@@ -1,9 +1,10 @@
 # Syntra Neovim (`syntra-nvim`)
 
-High-performance, minimalist Neovim environment designed for distraction-free coding and formal verification:
+High-performance, minimalist Neovim environment designed for distraction-free coding, source-first DAG task navigation, and native context routing:
 - **Monochrome Aesthetics**: Pure black and white, zero syntax noise, high-contrast readability.
 - **Tiling & Terminal Multiplexing**: Hyprland-style seamless split management (`Alt+h/j/k/l`, `Alt+q`, `Alt+z`).
-- **Formal Verification Ready**: Native hooks for Lean 4 theorem proving and language servers.
+- **Native Logic Compiler (`lgcc`)**: Zero-overhead C++20 compiler and context router (`prime-router`) generating compressed AST skeletons and dependency intermediate representations for LLM reasoning.
+- **Source-First Task Management (`:Tasks`)**: In-tree structured contract enforcement bridging repository TODO DAGs and Taskwarrior.
 - **Persistent Shell State**: Embedded terminals automatically track directory changes across splits.
 
 ---
@@ -43,6 +44,11 @@ sudo apt update && sudo apt upgrade syntra-nvim
 * `Ctrl + Shift + Up/Down`: Scroll terminal scrollback.
 * `Esc`: Drops to Normal mode when at the shell prompt, passes directly through when interactive CLI apps are running.
 
-### 3. Lean 4 & LSP Support
+### 3. Native Logic Compiler (`lgcc`) & Context Routing
+* `:Lgcc`: Runs semantic compiler checks on the active buffer, streaming output directly to a dedicated floating panel and Quickfix.
+* **Automated Model-Aware Budgeting**: Dynamically calculates and allocates token budgets based on the active LLM backend (`local` $\le$ 2k, `opencode` $\le$ 16k, `agy` $\le$ 32k).
+* **C++20 Knapsack Router**: Emits intermediate representations with >80% token compression by extracting contract skeletons and resolving multi-hop dependency graphs.
+
+### 4. Language Server & Diagnostics
 * Buffer hooks for `gd` (definition), `gD` (declaration), `gr` (references), and `K` (hover).
 * Streamlined diagnostics with clean borders and floating documentation.

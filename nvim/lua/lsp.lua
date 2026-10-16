@@ -1,6 +1,6 @@
 -- ==============================================================================
--- lsp.lua: Lean & Language Server Buffer Configuration
--- Provides keybindings and buffer hooks when LSP attaches (e.g. Lean 4)
+-- lsp.lua: Language Server Buffer Configuration
+-- Provides keybindings and buffer hooks when LSP attaches
 -- ==============================================================================
 
 vim.api.nvim_create_autocmd("LspAttach", {
