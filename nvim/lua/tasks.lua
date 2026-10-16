@@ -16,11 +16,11 @@
 -- Description: Define a formal LexLean specification schema representing in-line task contracts, including inductive types for tiers, DAG dependencies, and theorem-backed acceptance criteria.
 -- Criterion: review: "LexLean schema for source task contracts passes lean4 formal verification and exports semantic AST"
 
--- TODO(spec-jit-patch-schema | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[tasks-add-spec-scaffold]): Define syntax for distributed in-tree LexLean specification patches.
+-- TODO(spec-jit-patch-schema | tier:B | depends_on:[spec-lexlean-todo-schema] | blocks:[lgcc-native-linter]): Define syntax for distributed in-tree LexLean specification patches.
 -- Description: Define specification patch syntax and grammar allowing in-line source comments to embed typed LexLean declarations, inductive types, and theorem blocks.
 -- Criterion: review: "Formal grammar for in-line [lexlean:declarations] and [lexlean:theorem] patches validates under tree-sitter and regex parsers"
 
--- TODO(tasks-add-spec-scaffold | tier:B | depends_on:[spec-jit-patch-schema] | blocks:[lgcc-spec-scanner]): Extend :Tasks add to scaffold formal LexLean SPEC blocks with declaration and theorem templates.
+-- TODO(tasks-add-spec-scaffold | tier:B | depends_on:[lgcc-native-linter] | blocks:[lgcc-spec-scanner]): Extend :Tasks add to scaffold formal LexLean SPEC blocks with declaration and theorem templates.
 -- Description: Extend :Tasks add in Neovim to scaffold formal LexLean SPEC blocks with [lexlean:declarations] and [lexlean:theorems] templates.
 -- Criterion: review: ":Tasks add spec <desc> inserts structured SPEC comment block with LexLean payload stubs at target line"
 
@@ -80,6 +80,20 @@ local function get_active_dirs()
   add(vim.fn.getcwd())
 
   return dirs
+end
+
+local function get_lgcc_bin()
+  local candidates = {
+    vim.fn.expand("~/.config/nvim/bin/lgcc"),
+    vim.fn.expand("~/code/syntra-nvim/bin/lgcc"),
+    "/usr/bin/lgcc",
+  }
+  for _, c in ipairs(candidates) do
+    if vim.fn.executable(c) == 1 then
+      return c
+    end
+  end
+  return nil
 end
 
 --- Find lint_tasks.py in active split, buffer, terminal cwd, git root, or known repositories
@@ -217,10 +231,16 @@ end
 
 --- Show in-tree Source-First TODO DAG
 local function show_repo_tasks(script_path, origin_win, target_task_id)
-  local cmd = { "python3", script_path, "--json" }
-  local out = vim.fn.system(cmd)
-  if vim.v.shell_error ~= 0 and out == "" then
-    vim.notify("tasks: Failed to execute " .. script_path, vim.log.levels.ERROR)
+  local lgcc = get_lgcc_bin()
+  local out
+  if lgcc and vim.fn.executable(lgcc) == 1 then
+    local target_dir = vim.fs.root(script_path, ".git") or vim.fn.fnamemodify(script_path, ":h:h")
+    out = vim.fn.system({ lgcc, "--lint-tasks", "--json", target_dir })
+  else
+    out = vim.fn.system({ "python3", script_path, "--json" })
+  end
+  if vim.v.shell_error ~= 0 and (not out or out == "") then
+    vim.notify("tasks: Failed to execute task linter", vim.log.levels.ERROR)
     return
   end
 

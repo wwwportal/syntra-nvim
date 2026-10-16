@@ -5,6 +5,7 @@
 #include "graph/graph.hpp"
 #include "router/router.hpp"
 #include "spec/stitcher.hpp"
+#include "spec/linter.hpp"
 
 using namespace lgcc;
 
@@ -249,6 +250,26 @@ int main(int argc, char* argv[]) {
         }
         std::cout << res.stitched_lex_tex;
         return 0;
+    }
+
+    if (mode == "--lint-tasks" || mode == "--lint") {
+        fs::path root = fs::current_path();
+        bool json_mode = false;
+        for (int i = 2; i < argc; ++i) {
+            std::string arg = argv[i];
+            if (arg == "--json") {
+                json_mode = true;
+            } else if (arg.rfind("--", 0) != 0) {
+                root = arg;
+            }
+        }
+        auto res = TaskLinter::lint_repository(root);
+        if (json_mode) {
+            std::cout << TaskLinter::to_json(res) << "\n";
+        } else {
+            TaskLinter::print_report(res);
+        }
+        return res.errors.empty() ? 0 : 1;
     }
 
     std::cerr << "Unknown mode or missing arguments: " << mode << "\n";

@@ -7,7 +7,8 @@ SRC = src/main.cpp \
       src/graph/symbol_table.cpp \
       src/graph/graph.cpp \
       src/router/router.cpp \
-      src/spec/stitcher.cpp
+      src/spec/stitcher.cpp \
+      src/spec/linter.cpp
 
 TARGET = bin/lgcc
 

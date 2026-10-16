@@ -12,20 +12,35 @@ Schema:
 """
 
 import sys
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Set, Any, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# If native lgcc binary is available, delegate directly to C++ engine
+LGCC_CANDIDATES = [
+    ROOT / "bin" / "lgcc",
+    Path.home() / ".config" / "nvim" / "bin" / "lgcc",
+    Path("/usr/bin/lgcc"),
+]
+for candidate in LGCC_CANDIDATES:
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        cmd = [str(candidate), "--lint-tasks"] + sys.argv[1:]
+        res = subprocess.run(cmd)
+        sys.exit(res.returncode)
+
 # Regex for the task declaration line: supports #, //, --
 TASK_HEADER_RE = re.compile(
-    r'^[ \t]*(?:#|//|--)\s*(TODO|FIXME)\(([a-zA-Z0-9_\-]+)\s*\|\s*tier:([ABC])'
+    r'^[ \t]*(?:#|//|--)\s*(TODO|FIXME|SPEC)\(([a-zA-Z0-9_\-]+)\s*\|\s*tier:([ABC])'
     r'((?:\s*\|\s*(?:blocks|depends_on):\[[a-zA-Z0-9_\-,\s]*\])*)\):(?:\s*(.*))?$'
 )
 
 # Regex for untyped, lazy TODOs that violate the schema
-LAZY_TODO_RE = re.compile(r'^[ \t]*(?:#|//|--)\s*(TODO|FIXME)(?!\([a-zA-Z0-9_\-]+\s*\|).*$', re.IGNORECASE)
+LAZY_TODO_RE = re.compile(r'^[ \t]*(?:#|//|--)\s*(TODO|FIXME|SPEC)(?!\([a-zA-Z0-9_\-]+\s*\|).*$', re.IGNORECASE)
 
 CRITERION_RE = re.compile(r'^[ \t]*(?:#|//|--)\s*Criterion:\s*(assert:\s*.+|review:\s*.+)$')
 DESCRIPTION_RE = re.compile(r'^[ \t]*(?:#|//|--)\s*Description:\s*(.+)$')
