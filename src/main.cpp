@@ -140,6 +140,90 @@ std::string format_ir_bundle(const fs::path& target_path, const RouteResult& res
         }
     }
 
+    // Collect Task Graph SPEC contracts from target + routed files (+ companion .hpp/.cpp headers)
+    std::vector<fs::path> spec_candidate_files;
+    std::unordered_set<std::string> seen_spec_files;
+    auto add_spec_candidate = [&](const fs::path& p) {
+        if (!fs::exists(p) || fs::is_directory(p)) return;
+        std::string s = fs::absolute(p).string();
+        if (seen_spec_files.insert(s).second) {
+            spec_candidate_files.push_back(p);
+        }
+        // Check companion header/source in same directory
+        std::string ext = p.extension().string();
+        if (ext == ".cpp" || ext == ".cc") {
+            fs::path hpp = p; hpp.replace_extension(".hpp");
+            if (fs::exists(hpp) && seen_spec_files.insert(fs::absolute(hpp).string()).second) {
+                spec_candidate_files.push_back(hpp);
+            }
+            fs::path h = p; h.replace_extension(".h");
+            if (fs::exists(h) && seen_spec_files.insert(fs::absolute(h).string()).second) {
+                spec_candidate_files.push_back(h);
+            }
+        } else if (ext == ".hpp" || ext == ".h") {
+            fs::path cpp = p; cpp.replace_extension(".cpp");
+            if (fs::exists(cpp) && seen_spec_files.insert(fs::absolute(cpp).string()).second) {
+                spec_candidate_files.push_back(cpp);
+            }
+        }
+    };
+
+    if (!fs::is_directory(target_abs)) {
+        add_spec_candidate(target_abs);
+    }
+    for (const auto& sym : res.selected_symbols) {
+        add_spec_candidate(sym.filepath);
+    }
+
+    std::vector<SpecFragment> routed_specs;
+    std::unordered_set<std::string> seen_spec_ids;
+    for (const auto& sp : spec_candidate_files) {
+        for (auto& frag : SpecStitcher::scan_file(sp)) {
+            if (seen_spec_ids.insert(frag.id).second) {
+                routed_specs.push_back(std::move(frag));
+            }
+        }
+    }
+
+    if (!routed_specs.empty()) {
+        bundle << "==============================================================================\n";
+        bundle << "TASK GRAPH FORMAL SPECIFICATIONS & INVARIANTS (" << routed_specs.size() << " contracts)\n";
+        bundle << "==============================================================================\n";
+        for (const auto& sp : routed_specs) {
+            bundle << "  spec " << sp.id << " [tier:" << sp.tier << "] ("
+                   << sp.source_file.string() << ":" << sp.line << ")";
+            if (!sp.depends_on.empty()) {
+                bundle << " depends_on:[";
+                for (size_t i = 0; i < sp.depends_on.size(); ++i) {
+                    if (i > 0) bundle << ", ";
+                    bundle << sp.depends_on[i];
+                }
+                bundle << "]";
+            }
+            if (!sp.blocks.empty()) {
+                bundle << " blocks:[";
+                for (size_t i = 0; i < sp.blocks.size(); ++i) {
+                    if (i > 0) bundle << ", ";
+                    bundle << sp.blocks[i];
+                }
+                bundle << "]";
+            }
+            bundle << "\n";
+            if (!sp.description.empty()) {
+                bundle << "    desc:      " << sp.description << "\n";
+            }
+            if (!sp.criterion.empty()) {
+                bundle << "    criterion: " << sp.criterion << "\n";
+            }
+            if (!sp.theorems_json.empty()) {
+                std::string thm = trim(sp.theorems_json);
+                std::replace(thm.begin(), thm.end(), '\n', ' ');
+                bundle << "    theorem:   " << thm << "\n";
+            }
+        }
+        bundle << "\n";
+    }
+
     if (!unique_files.empty()) {
         bundle << "==============================================================================\n";
         bundle << "ROUTED INTERFACE CONTRACTS (" << unique_files.size() << " modules)\n";

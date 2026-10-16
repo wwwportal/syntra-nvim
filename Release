@@ -5,10 +5,10 @@ Codename: stable
 Architectures: all amd64 arm64
 Components: main
 Description: Syntra Neovim APT Repository
-Date: Fri, 16 Oct 2026 02:40:43 +0000
+Date: Fri, 16 Oct 2026 02:59:03 +0000
 MD5Sum:
- 19b0ccf568e963b73bf59c4debd7fdc1 634 Packages
- a409849e107292abb2128c1940fbe03a 469 Packages.gz
+ 1b8da8633d117608255de69b38116e1d 634 Packages
+ 5d963e57759c6cee87d299b959d6f490 472 Packages.gz
 SHA256:
- 6b3e90c0d0a42f55b9a9b3d8834834dab0735b19152102191491f9061086b2de 634 Packages
- 38fbeaf841bc1b749acdb887bb46a72c962b6c2e463d5b0cf2b31a6115e98bf9 469 Packages.gz
+ ca51d95fe30dc16568a0f4a310339703adb283b0205d6a53262dea9f6749fd8b 634 Packages
+ 18a4fc41b3b19694803137ebb7c31e68bb0ccf14005ed86a7d16ec6703b67766 472 Packages.gz

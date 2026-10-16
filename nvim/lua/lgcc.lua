@@ -232,17 +232,20 @@ function M.lint(opts)
   end
 
   local system_prompt = [[You are the Logical Compiler (lgcc).
-Analyze the provided source code and Code Graph IR for semantic bugs, invariant violations, and cross-module logical flaws.
-The CODE GRAPH TOPOLOGY G=(V, E) and ROUTED INTERFACE CONTRACTS sections provide the symbol call graph, type edges, and skeletonized module contracts across the repository.
+Analyze the provided source code, Code Graph IR, and Task Graph specifications for semantic bugs, invariant violations, and cross-module logical flaws.
+- CODE GRAPH TOPOLOGY G=(V, E) provides the symbol call graph, type edges, and line ranges across the repository.
+- TASK GRAPH FORMAL SPECIFICATIONS & INVARIANTS provides the formal `SPEC` contracts, acceptance criteria, and LexLean theorems that the code must satisfy.
+- ROUTED INTERFACE CONTRACTS provides the skeletonized module interfaces and full implementations of high-centrality dependencies.
 Ignore syntax, formatting, and naming conventions.
 If you need heavy dependency context or external code exploration, you may run `opencode run "<query>"` to delegate sub-worker analysis.
-If flaws exist, output each flaw strictly on its own line in this format:
-<file>:<line>: error: <clear description of flaw>
+If flaws or specification violations exist, output each strictly on its own line in this format:
+<file>:<line>: error: <clear description of logical flaw or invariant violation>
 If there are no logic errors, output: CLEAN]]
 
   local full_prompt = string.format("%s\n\n%s%s", system_prompt, spec_section, code_section)
 
-  local file_basename = is_dir and (vim.fn.fnamemodify(filepath, ":t") .. "/") or vim.fn.fnamemodify(filepath, ":t")
+  local clean_path = filepath:gsub("/+$", "")
+  local file_basename = is_dir and (vim.fn.fnamemodify(clean_path, ":t") .. "/") or vim.fn.fnamemodify(clean_path, ":t")
   local budget_label = used_budget and string.format(" [+%dtok]", used_budget) or (opts.bundle and " [+deps]" or "")
   local state = start_ticker(file_basename .. budget_label, initial_engine)
 
