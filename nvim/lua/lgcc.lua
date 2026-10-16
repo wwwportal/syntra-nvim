@@ -170,7 +170,7 @@ local ENGINE_BUDGET_PROFILES = {
   ["agy"] = {
     max_context = 128000,
     headroom = 16000,
-    default_dep_budget = 32000,
+    default_dep_budget = 8000,
   },
 }
 
@@ -258,13 +258,14 @@ function M.lint(opts)
     end
   end
 
-  local system_prompt = [[You are the Logical Compiler (lgcc).
+  local system_prompt = [[CRITICAL INSTRUCTION: You are the Logical Compiler (lgcc).
+Do NOT call any tools or commands (do NOT run view_file, grep, or bash). All context is provided below.
 Analyze the provided source code, Code Graph IR, and Task Graph specifications for semantic bugs, invariant violations, and cross-module logical flaws.
 - CODE GRAPH TOPOLOGY G=(V, E) provides the symbol call graph, type edges, and line ranges across the repository.
 - TASK GRAPH FORMAL SPECIFICATIONS & INVARIANTS provides the formal `SPEC` contracts, acceptance criteria, and LexLean theorems that the code must satisfy.
 - ROUTED INTERFACE CONTRACTS provides the skeletonized module interfaces and full implementations of high-centrality dependencies.
 Ignore syntax, formatting, and naming conventions.
-If you need heavy dependency context or external code exploration, you may run `opencode run "<query>"` to delegate sub-worker analysis.
+Output your verdict immediately in this turn.
 If flaws or specification violations exist, output each strictly on its own line in this format:
 <file>:<line>: error: <clear description of logical flaw or invariant violation>
 If there are no logic errors, output: CLEAN]]
@@ -282,7 +283,7 @@ If there are no logic errors, output: CLEAN]]
 
     local cmd = {}
     if engine_name == "agy" then
-      cmd = { "agy", "-p", full_prompt, "--dangerously-skip-permissions", "--disable-slash-commands", "--output-format", "stream-json" }
+      cmd = { "agy", "-p", full_prompt, "--dangerously-skip-permissions", "--disable-slash-commands", "--effort", "low", "--output-format", "stream-json" }
     elseif engine_name == "opencode" then
       cmd = { "opencode", "run", "--auto", full_prompt }
     else
