@@ -3,6 +3,7 @@ target/
 **/target/
 *.tmp
 .DS_Store
+vendor/
 
 # Python
 __pycache__/

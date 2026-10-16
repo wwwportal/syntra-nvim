@@ -62,6 +62,10 @@ jobs:
           cp vendor/prismpm/vendor/lexlean/target/debug/lexlean ~/.cargo/bin/
           cp vendor/prismpm/target/debug/prismpm ~/.cargo/bin/
 
+      - name: Build lgcc Compiler
+        run: |
+          make all
+
       - name: Run Task Graph Linter
         run: |
           ./bin/lgcc --lint-tasks
@@ -72,5 +76,5 @@ jobs:
 
       - name: Verify Code Graph Context Router
         run: |
-          ./bin/lgcc --route src/ --budget 8000 --format ir > /dev/null
+          ./bin/lgcc --route crates/lgcc/src/ --budget 8000 --format ir > /dev/null
           echo "Code Graph context routing verified successfully"

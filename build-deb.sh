@@ -18,6 +18,9 @@ mkdir -p "$STAGING_DIR/usr/local/bin"
 mkdir -p "$STAGING_DIR/usr/share/syntra-nvim/config/bin"
 mkdir -p "$STAGING_DIR/etc/skel/.config/nvim/bin"
 
+echo "==> Building native lgcc compiler..."
+make all
+
 echo "==> Bundling Neovim configuration & native lgcc compiler..."
 cp -r "$REPO_ROOT/nvim/"* "$STAGING_DIR/usr/share/syntra-nvim/config/"
 cp -r "$REPO_ROOT/nvim/"* "$STAGING_DIR/etc/skel/.config/nvim/"
@@ -38,7 +41,7 @@ Architecture: all
 Depends: git, curl, ripgrep, tar, gzip, ca-certificates
 Maintainer: Syntra <support@syntra.io>
 Description: High-performance Neovim setup with monochrome aesthetics and tiling
- Provisions modern Neovim (v0.10+), native C++20/Rust lgcc Code Graph & Task Graph engine,
+ Provisions modern Neovim (v0.10+), native Rust lgcc Code Graph & Task Graph engine,
  and custom monochrome window and terminal tiling multiplexer.
 EOF
 

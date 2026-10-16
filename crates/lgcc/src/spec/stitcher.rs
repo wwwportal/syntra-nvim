@@ -202,11 +202,79 @@ fn lower_expr(v: &Value) -> Result<Expr, String> {
                 Box::new(lower_expr(right)?),
             ))
         }
+        "le" => {
+            let left = v.get("left").ok_or_else(|| "le expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "le expr missing right".to_string())?;
+            Ok(Expr::Le(Box::new(lower_expr(left)?), Box::new(lower_expr(right)?)))
+        }
+        "lt" => {
+            let left = v.get("left").ok_or_else(|| "lt expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "lt expr missing right".to_string())?;
+            Ok(Expr::Lt(Box::new(lower_expr(left)?), Box::new(lower_expr(right)?)))
+        }
+        "ge" => {
+            let left = v.get("left").ok_or_else(|| "ge expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "ge expr missing right".to_string())?;
+            Ok(Expr::Le(Box::new(lower_expr(right)?), Box::new(lower_expr(left)?)))
+        }
+        "gt" => {
+            let left = v.get("left").ok_or_else(|| "gt expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "gt expr missing right".to_string())?;
+            Ok(Expr::Gt(Box::new(lower_expr(left)?), Box::new(lower_expr(right)?)))
+        }
+        "add" => {
+            let left = v.get("left").ok_or_else(|| "add expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "add expr missing right".to_string())?;
+            Ok(Expr::Add(Box::new(lower_expr(left)?), Box::new(lower_expr(right)?)))
+        }
+        "sub" => {
+            let left = v.get("left").ok_or_else(|| "sub expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "sub expr missing right".to_string())?;
+            Ok(Expr::Sub(Box::new(lower_expr(left)?), Box::new(lower_expr(right)?)))
+        }
+        "mul" => {
+            let left = v.get("left").ok_or_else(|| "mul expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "mul expr missing right".to_string())?;
+            Ok(Expr::Mul(Box::new(lower_expr(left)?), Box::new(lower_expr(right)?)))
+        }
+        "div" => {
+            let left = v.get("left").ok_or_else(|| "div expr missing left".to_string())?;
+            let right = v.get("right").ok_or_else(|| "div expr missing right".to_string())?;
+            Ok(Expr::Div(Box::new(lower_expr(left)?), Box::new(lower_expr(right)?)))
+        }
+        "not" => {
+            let arg = v
+                .get("arg")
+                .or_else(|| v.get("operand"))
+                .ok_or_else(|| "not expr missing arg".to_string())?;
+            Ok(Expr::If(
+                Box::new(lower_expr(arg)?),
+                Box::new(Expr::Bool(false)),
+                Box::new(Expr::Bool(true)),
+            ))
+        }
+        "if" | "ite" => {
+            let cond = v
+                .get("condition")
+                .or_else(|| v.get("cond"))
+                .ok_or_else(|| "if expr missing condition".to_string())?;
+            let then_arm = v.get("then").ok_or_else(|| "if expr missing then".to_string())?;
+            let else_arm = v.get("else").ok_or_else(|| "if expr missing else".to_string())?;
+            Ok(Expr::If(
+                Box::new(lower_expr(cond)?),
+                Box::new(lower_expr(then_arm)?),
+                Box::new(lower_expr(else_arm)?),
+            ))
+        }
         other => Err(format!("unsupported LexLean expression kind `{other}`")),
     }
 }
 
-fn eval_expr(expr: &Expr, env: &HashMap<String, EvalVal>) -> Result<EvalVal, String> {
+fn eval_expr(
+    expr: &Expr,
+    env: &HashMap<String, EvalVal>,
+    defs: &HashMap<String, Definition>,
+) -> Result<EvalVal, String> {
     match expr {
         Expr::Bool(b) => Ok(EvalVal::Bool(*b)),
         Expr::Nat(n) => Ok(EvalVal::Nat(*n)),
@@ -217,25 +285,119 @@ fn eval_expr(expr: &Expr, env: &HashMap<String, EvalVal>) -> Result<EvalVal, Str
             .cloned()
             .ok_or_else(|| format!("unbound variable `{name}` during contract evaluation")),
         Expr::Call(fn_name, args) => {
-            if !args.is_empty() {
-                return Err(format!(
-                    "contract evaluator only supports 0-arg invariant calls right now (`{fn_name}`)"
-                ));
+            let mut evaled_args = Vec::with_capacity(args.len());
+            for a in args {
+                evaled_args.push(eval_expr(a, env, defs)?);
             }
-            env.get(fn_name).cloned().ok_or_else(|| {
-                format!("call to undefined or out-of-order specification function `{fn_name}`")
-            })
+            if let Some(def) = defs.get(fn_name) {
+                if def.params.len() != evaled_args.len() {
+                    return Err(format!(
+                        "function `{fn_name}` expected {} arguments, got {}",
+                        def.params.len(),
+                        evaled_args.len()
+                    ));
+                }
+                let mut local_env = env.clone();
+                for ((pname, _), val) in def.params.iter().zip(evaled_args) {
+                    local_env.insert(pname.clone(), val);
+                }
+                eval_expr(&def.body, &local_env, defs)
+            } else if args.is_empty() {
+                env.get(fn_name).cloned().ok_or_else(|| {
+                    format!("call to undefined or out-of-order specification function `{fn_name}`")
+                })
+            } else {
+                Err(format!(
+                    "call to undefined function `{fn_name}` with {} arguments",
+                    args.len()
+                ))
+            }
         }
         Expr::Eq(l, r) => {
-            let lv = eval_expr(l, env)?;
-            let rv = eval_expr(r, env)?;
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
             Ok(EvalVal::Bool(lv == rv))
         }
+        Expr::Le(l, r) => {
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
+            match (lv, rv) {
+                (EvalVal::Nat(a), EvalVal::Nat(b)) => Ok(EvalVal::Bool(a <= b)),
+                (EvalVal::Int(a), EvalVal::Int(b)) => Ok(EvalVal::Bool(a <= b)),
+                _ => Err("invalid types for Le comparison".to_string()),
+            }
+        }
+        Expr::Lt(l, r) => {
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
+            match (lv, rv) {
+                (EvalVal::Nat(a), EvalVal::Nat(b)) => Ok(EvalVal::Bool(a < b)),
+                (EvalVal::Int(a), EvalVal::Int(b)) => Ok(EvalVal::Bool(a < b)),
+                _ => Err("invalid types for Lt comparison".to_string()),
+            }
+        }
+        Expr::Gt(l, r) => {
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
+            match (lv, rv) {
+                (EvalVal::Nat(a), EvalVal::Nat(b)) => Ok(EvalVal::Bool(a > b)),
+                (EvalVal::Int(a), EvalVal::Int(b)) => Ok(EvalVal::Bool(a > b)),
+                _ => Err("invalid types for Gt comparison".to_string()),
+            }
+        }
+        Expr::Add(l, r) => {
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
+            match (lv, rv) {
+                (EvalVal::Nat(a), EvalVal::Nat(b)) => Ok(EvalVal::Nat(a + b)),
+                (EvalVal::Int(a), EvalVal::Int(b)) => Ok(EvalVal::Int(a + b)),
+                _ => Err("invalid types for Add".to_string()),
+            }
+        }
+        Expr::Sub(l, r) => {
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
+            match (lv, rv) {
+                (EvalVal::Nat(a), EvalVal::Nat(b)) => Ok(EvalVal::Nat(a.saturating_sub(b))),
+                (EvalVal::Int(a), EvalVal::Int(b)) => Ok(EvalVal::Int(a - b)),
+                _ => Err("invalid types for Sub".to_string()),
+            }
+        }
+        Expr::Mul(l, r) => {
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
+            match (lv, rv) {
+                (EvalVal::Nat(a), EvalVal::Nat(b)) => Ok(EvalVal::Nat(a * b)),
+                (EvalVal::Int(a), EvalVal::Int(b)) => Ok(EvalVal::Int(a * b)),
+                _ => Err("invalid types for Mul".to_string()),
+            }
+        }
+        Expr::Div(l, r) => {
+            let lv = eval_expr(l, env, defs)?;
+            let rv = eval_expr(r, env, defs)?;
+            match (lv, rv) {
+                (EvalVal::Nat(a), EvalVal::Nat(b)) => {
+                    if b == 0 {
+                        Err("division by zero in contract evaluation".to_string())
+                    } else {
+                        Ok(EvalVal::Nat(a / b))
+                    }
+                }
+                (EvalVal::Int(a), EvalVal::Int(b)) => {
+                    if b == 0 {
+                        Err("division by zero in contract evaluation".to_string())
+                    } else {
+                        Ok(EvalVal::Int(a / b))
+                    }
+                }
+                _ => Err("invalid types for Div".to_string()),
+            }
+        }
         Expr::If(c, t, e) => {
-            let cv = eval_expr(c, env)?;
+            let cv = eval_expr(c, env, defs)?;
             match cv {
-                EvalVal::Bool(true) => eval_expr(t, env),
-                EvalVal::Bool(false) => eval_expr(e, env),
+                EvalVal::Bool(true) => eval_expr(t, env, defs),
+                EvalVal::Bool(false) => eval_expr(e, env, defs),
                 _ => Err("if condition did not evaluate to Bool".to_string()),
             }
         }
@@ -264,6 +426,7 @@ pub fn lower_and_verify_semantic_json(
 
     let mut types = Vec::new();
     let mut definitions = Vec::new();
+    let mut defs_map: HashMap<String, Definition> = HashMap::new();
     let mut eval_env: HashMap<String, EvalVal> = HashMap::new();
     let mut theorems_verified: u32 = 0;
 
@@ -371,17 +534,20 @@ pub fn lower_and_verify_semantic_json(
                     .ok_or_else(|| format!("definition `{name}` missing body"))?;
                 let body = lower_expr(body_val)?;
 
-                if params.is_empty() {
-                    let val = eval_expr(&body, &eval_env)?;
-                    eval_env.insert(name.to_string(), val);
-                }
-
-                definitions.push(Definition {
+                let def = Definition {
                     name: name.to_string(),
                     params,
                     ret,
                     body,
-                });
+                };
+                defs_map.insert(name.to_string(), def.clone());
+
+                if def.params.is_empty() {
+                    let val = eval_expr(&def.body, &eval_env, &defs_map)?;
+                    eval_env.insert(name.to_string(), val);
+                }
+
+                definitions.push(def);
             }
             "theorem" => {
                 let name = decl
@@ -397,7 +563,7 @@ pub fn lower_and_verify_semantic_json(
                         .get("statement")
                         .ok_or_else(|| format!("theorem `{name}` missing statement"))?;
                     let stmt_expr = lower_expr(stmt)?;
-                    let val = eval_expr(&stmt_expr, &eval_env)?;
+                    let val = eval_expr(&stmt_expr, &eval_env, &defs_map)?;
                     if val != EvalVal::Bool(true) {
                         return Err(format!(
                             "theorem `{name}` statement evaluated to `{val:?}` instead of `Bool(true)`"
@@ -408,6 +574,32 @@ pub fn lower_and_verify_semantic_json(
             }
             other => {
                 return Err(format!("unsupported declaration kind `{other}`"));
+            }
+        }
+    }
+
+    if let Some(thms) = root.get("theorems").and_then(Value::as_array) {
+        for thm in thms {
+            let name = thm
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "theorem missing name".to_string())?;
+            let params_arr = thm
+                .get("parameters")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("theorem `{name}` missing parameters"))?;
+            if params_arr.is_empty() {
+                let stmt = thm
+                    .get("statement")
+                    .ok_or_else(|| format!("theorem `{name}` missing statement"))?;
+                let stmt_expr = lower_expr(stmt)?;
+                let val = eval_expr(&stmt_expr, &eval_env, &defs_map)?;
+                if val != EvalVal::Bool(true) {
+                    return Err(format!(
+                        "theorem `{name}` statement evaluated to `{val:?}` instead of `Bool(true)`"
+                    ));
+                }
+                theorems_verified += 1;
             }
         }
     }
