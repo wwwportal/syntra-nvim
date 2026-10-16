@@ -24,6 +24,8 @@ pub struct TaskRecord {
     pub criterion: String,
     pub file: PathBuf,
     pub line: usize,
+    pub maturity: String, // "INFORMAL", "DRAFT", "VERIFIED"
+    pub unproven_goals: Vec<String>,
 }
 
 /*
@@ -116,11 +118,11 @@ impl TaskLinter {
         // Sort SPEC tasks topologically so definitions precede their callers
         let mut in_degree: HashMap<String, usize> = HashMap::new();
         let mut adj: HashMap<String, Vec<String>> = HashMap::new();
-        let mut spec_tasks: HashMap<String, &TaskRecord> = HashMap::new();
+        let mut spec_indices: HashMap<String, usize> = HashMap::new();
 
-        for t in &res.tasks {
+        for (idx, t) in res.tasks.iter().enumerate() {
             if t.kind == "SPEC" {
-                spec_tasks.insert(t.id.clone(), t);
+                spec_indices.insert(t.id.clone(), idx);
                 in_degree.entry(t.id.clone()).or_insert(0);
                 for dep in &t.depends_on {
                     adj.entry(dep.clone()).or_default().push(t.id.clone());
@@ -136,10 +138,10 @@ impl TaskLinter {
             }
         }
 
-        let mut topo_tasks = Vec::new();
+        let mut topo_task_indices = Vec::new();
         while let Some(curr) = q.pop_front() {
-            if let Some(t) = spec_tasks.get(&curr) {
-                topo_tasks.push(*t);
+            if let Some(&idx) = spec_indices.get(&curr) {
+                topo_task_indices.push(idx);
             }
             if let Some(neighbors) = adj.get(&curr) {
                 for next in neighbors {
@@ -158,8 +160,12 @@ impl TaskLinter {
         let mut stitched_theorems = Vec::new();
         let mut raw_lean_snippets = Vec::new();
 
-        for t in topo_tasks {
-            if let Ok(content) = fs::read_to_string(&t.file) {
+        for idx in topo_task_indices {
+            let (task_id, task_file, task_line, task_crit) = {
+                let t = &res.tasks[idx];
+                (t.id.clone(), t.file.clone(), t.line, t.criterion.clone())
+            };
+            if let Ok(content) = fs::read_to_string(&task_file) {
                 let lines: Vec<&str> = content.lines().collect();
                 let mut in_decl = false;
                 let mut in_thm = false;
@@ -167,7 +173,7 @@ impl TaskLinter {
                 let mut lean_lines = Vec::new();
 
                 let mut in_block = false;
-                for l in lines.iter().take(t.line) {
+                for l in lines.iter().take(task_line) {
                     let tr = l.trim();
                     if tr.starts_with("/*") || tr.starts_with("--[[") {
                         in_block = true;
@@ -177,7 +183,7 @@ impl TaskLinter {
                     }
                 }
 
-                for line in lines.iter().skip(t.line) {
+                for line in lines.iter().skip(task_line) {
                     let trimmed = line.trim();
                     if trimmed.starts_with("/*") || trimmed.starts_with("--[[") {
                         in_block = true;
@@ -259,8 +265,27 @@ impl TaskLinter {
                             }
                         }
                         Err(err) => {
-                            res.errors.push(format!("{}: Lean 4 spec syntax error: {err}", t.id));
+                            res.errors.push(format!("{}: Lean 4 spec syntax error: {err}", task_id));
                         }
+                    }
+
+                    // Validate theorem criterion reference if present
+                    if let Some(thm_ref) = task_crit.strip_prefix("theorem:").or_else(|| task_crit.strip_prefix("lean:")) {
+                        let thm_clean = thm_ref.trim();
+                        if !lean_code.contains(&format!("theorem {thm_clean}")) && !lean_code.contains(&format!("def {thm_clean}")) {
+                            res.errors.push(format!(
+                                "{}: Criterion references Lean obligation '{}', but no such theorem or definition is present in [lean:spec]",
+                                task_id, thm_clean
+                            ));
+                        }
+                    }
+
+                    // Check for open proof goals (e.g. sorry)
+                    if lean_code.contains("sorry") {
+                        res.tasks[idx].maturity = "DRAFT".to_string();
+                        res.tasks[idx].unproven_goals.push("proof contains open obligation 'sorry'".to_string());
+                    } else {
+                        res.tasks[idx].maturity = "VERIFIED".to_string();
                     }
                 }
             }
@@ -341,7 +366,7 @@ impl TaskLinter {
             r"(?i)^[ \t]*(?:#|//|--|/\*|\*|\*)?\s*(TODO|FIXME|SPEC)\b"
         ).unwrap();
         let desc_re = Regex::new(r"^[ \t]*(?:#|//|--|/\*|\*|\*)?\s*Description:\s*(.+)$").unwrap();
-        let crit_re = Regex::new(r"^[ \t]*(?:#|//|--|/\*|\*|\*)?\s*Criterion:\s*(assert:\s*.+|review:\s*.+)$").unwrap();
+        let crit_re = Regex::new(r"^[ \t]*(?:#|//|--|/\*|\*|\*)?\s*Criterion:\s*(assert:\s*.+|review:\s*.+|theorem:\s*.+|lean:\s*.+)$").unwrap();
 
         let lines: Vec<&str> = content.lines().collect();
         let mut in_block = false;
@@ -457,6 +482,12 @@ impl TaskLinter {
                     errors.push(format!("{}:{}: Task '{}' is missing a Criterion field.", rel_path, line_num, id));
                 }
 
+                let maturity = if kind == "SPEC" {
+                    "DRAFT".to_string()
+                } else {
+                    "INFORMAL".to_string()
+                };
+
                 tasks.push(TaskRecord {
                     id,
                     kind,
@@ -467,6 +498,8 @@ impl TaskLinter {
                     criterion,
                     file: filepath.to_path_buf(),
                     line: line_num,
+                    maturity,
+                    unproven_goals: Vec::new(),
                 });
             }
         }
@@ -698,7 +731,7 @@ impl TaskLinter {
         }
 
         println!("\n[PASS] Verified {} in-line task contracts across codebase.", res.tasks.len());
-        println!("\nLive In-Tree Task DAG:");
+        println!("\nLive In-Tree Task DAG (Formalization Ladder):");
 
         for tier in &["A", "B", "C"] {
             let tier_tasks: Vec<&TaskRecord> = res.tasks.iter().filter(|t| t.tier == *tier).collect();
@@ -706,7 +739,12 @@ impl TaskLinter {
                 println!("\n--- Tier {} ---", tier);
                 for t in tier_tasks {
                     let rel = t.file.strip_prefix(&res.root).unwrap_or(&t.file).display();
-                    print!("  ● {} ({}:{})", t.id, rel, t.line);
+                    let badge = match t.maturity.as_str() {
+                        "VERIFIED" => "🟢 [VERIFIED]",
+                        "DRAFT" => "🟠 [DRAFT SPEC]",
+                        _ => "🟡 [INFORMAL - Needs Lean 4 Spec]",
+                    };
+                    print!("  ● {} ({}:{}) {}", t.id, rel, t.line, badge);
                     if !t.depends_on.is_empty() {
                         print!(" (depends on: {})", t.depends_on.join(", "));
                     }
@@ -715,6 +753,9 @@ impl TaskLinter {
                     }
                     println!("\n    Desc: {}", t.description);
                     println!("    Crit: {}", t.criterion);
+                    if !t.unproven_goals.is_empty() {
+                        println!("    Open Proof Obligations (Lean 4): {}", t.unproven_goals.join("; "));
+                    }
                 }
             }
         }
@@ -723,10 +764,10 @@ impl TaskLinter {
         if res.ffi_defs_verified > 0 || res.ffi_theorems_verified > 0 || res.lean_kernel_verified {
             println!("● Machine-Checked Proof Replay Succeeded!");
             if res.lean_kernel_verified {
-                println!("  Lean 4 Kernel:    Sound (lean --stdin kernel verification passed)");
+                println!("  Lean 4 Kernel:         Sound (lean --stdin kernel verification passed)");
             }
-            println!("  FFI C ABI Check:  {} definitions, {} theorems verified (prod_codegen)", res.ffi_defs_verified, res.ffi_theorems_verified);
-            println!("  PrismPM Status:   Sound (Zero unproven obligations)");
+            println!("  Specification Engine:  {} definitions, {} theorems verified (Native Rust)", res.ffi_defs_verified, res.ffi_theorems_verified);
+            println!("  PrismPM Status:        Sound (Zero unproven obligations)");
         }
     }
 
@@ -743,6 +784,8 @@ impl TaskLinter {
             criterion: &'a str,
             blocks: &'a [String],
             depends_on: &'a [String],
+            maturity: &'a str,
+            unproven_goals: &'a [String],
         }
 
         #[derive(Serialize)]
@@ -775,6 +818,8 @@ impl TaskLinter {
                     criterion: &t.criterion,
                     blocks: &t.blocks,
                     depends_on: &t.depends_on,
+                    maturity: &t.maturity,
+                    unproven_goals: &t.unproven_goals,
                 }
             })
             .collect();

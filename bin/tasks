@@ -22,6 +22,8 @@ if [ -x "$SCRIPT_DIR/lgcc" ]; then
     LGCC_BIN="$SCRIPT_DIR/lgcc"
 elif command -v lgcc &>/dev/null; then
     LGCC_BIN="$(command -v lgcc)"
+elif [ -x "$HOME/code/syn-nvim/bin/lgcc" ]; then
+    LGCC_BIN="$HOME/code/syn-nvim/bin/lgcc"
 elif [ -x "$HOME/code/syntra-nvim/bin/lgcc" ]; then
     LGCC_BIN="$HOME/code/syntra-nvim/bin/lgcc"
 elif [ -x "$HOME/.local/bin/lgcc" ]; then
@@ -32,7 +34,7 @@ fi
 
 if [ -z "$LGCC_BIN" ]; then
     echo "tasks: Error: native lgcc binary not found in PATH or standard locations." >&2
-    echo "       Please run ./setup.sh in syntra-nvim to install lgcc." >&2
+    echo "       Please run ./setup.sh in syn-nvim to install lgcc." >&2
     exit 1
 fi
 
@@ -45,15 +47,19 @@ Usage:
 
 Commands:
   tasks, tasks list [dir]        Scan in-tree task DAG and display tiered report (Tier A/B/C)
+  tasks informal [dir]           List informal TODO/FIXME tasks needing formal Lean 4 specification
+  tasks draft [dir]              List draft specifications with open proof obligations
+  tasks verified [dir]           List verified Lean 4 specification tasks
   tasks --json [dir]             Export in-tree task DAG as formatted JSON
   tasks fix [--apply] [dir]      Synthesize structured task contracts from unstructured comments
-  tasks verify [dir]             Execute formal LexLean proof replay via prod_codegen
+  tasks verify [dir]             Execute formal LexLean proof replay via native Rust engine
   tasks add [file] <tag>:<desc>  Add a task contract (tag: TODO, FIXME, SPEC)
   tasks tw, tasks taskwarrior    View or manage global Taskwarrior tasks
   tasks help, --help, -h         Display this help guide
 
 Examples:
   tasks                          # View all in-tree tasks in current repository
+  tasks informal                 # Show tasks needing formalization in Lean 4
   tasks fix                      # Dry-run contract synthesis for lazy comments
   tasks fix --apply              # Automatically rewrite lazy comments into verified contracts
   tasks verify                   # Verify all 36+ machine-checked Lean 4 theorems
@@ -72,6 +78,21 @@ case "$CMD" in
         shift || true
         TARGET_DIR="${1:-.}"
         exec "$LGCC_BIN" --lint-tasks "$TARGET_DIR"
+        ;;
+    informal|--informal|unformalized|--unformalized)
+        shift || true
+        TARGET_DIR="${1:-.}"
+        exec "$LGCC_BIN" --lint-tasks --informal "$TARGET_DIR"
+        ;;
+    draft|--draft)
+        shift || true
+        TARGET_DIR="${1:-.}"
+        exec "$LGCC_BIN" --lint-tasks --draft "$TARGET_DIR"
+        ;;
+    verified|--verified)
+        shift || true
+        TARGET_DIR="${1:-.}"
+        exec "$LGCC_BIN" --lint-tasks --verified "$TARGET_DIR"
         ;;
     --json|-j|json)
         shift || true

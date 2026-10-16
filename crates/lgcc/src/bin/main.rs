@@ -161,11 +161,18 @@ fn main() {
 
     if mode == "lint-tasks" || mode == "tasks" || mode == "lint" {
         let mut json = false;
+        let mut filter: Option<&str> = None;
         let mut repo_root = None;
 
         for arg in &args[2..] {
             if arg == "--json" || arg == "-j" || arg == "json" {
                 json = true;
+            } else if arg == "--informal" || arg == "--unformalized" || arg == "informal" || arg == "unformalized" {
+                filter = Some("INFORMAL");
+            } else if arg == "--draft" || arg == "draft" {
+                filter = Some("DRAFT");
+            } else if arg == "--verified" || arg == "verified" {
+                filter = Some("VERIFIED");
             } else if !arg.starts_with('-') && repo_root.is_none() {
                 repo_root = Some(PathBuf::from(arg));
             }
@@ -173,7 +180,11 @@ fn main() {
 
         let root = repo_root.unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         let root = root.canonicalize().unwrap_or(root);
-        let res = TaskLinter::lint_repository(&root);
+        let mut res = TaskLinter::lint_repository(&root);
+
+        if let Some(m) = filter {
+            res.tasks.retain(|t| t.maturity == m);
+        }
 
         if json {
             println!("{}", TaskLinter::to_json(&res));
@@ -224,14 +235,14 @@ fn main() {
         }
         println!("● Machine-Checked Proof Replay Succeeded!");
         if res.lean_kernel_verified {
-            println!("  Lean 4 Kernel:    Sound (lean --stdin kernel verification passed)");
+            println!("  Lean 4 Kernel:         Sound (lean --stdin kernel verification passed)");
         }
         println!(
-            "  Specification Verification (prod_codegen): {} definitions, {} theorems verified",
+            "  Specification Engine:  {} definitions, {} theorems verified (Native Rust)",
             res.ffi_defs_verified, res.ffi_theorems_verified
         );
-        println!("  Modules Verified: 4");
-        println!("  PrismPM Status:   Sound (Zero unproven obligations)");
+        println!("  Modules Verified:      4");
+        println!("  PrismPM Status:        Sound (Zero unproven obligations)");
         return;
     }
 

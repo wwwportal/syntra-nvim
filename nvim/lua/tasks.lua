@@ -155,6 +155,7 @@ local function get_lgcc_bin()
     return exepath
   end
   local candidates = {
+    vim.fn.expand("~/code/syn-nvim/bin/lgcc"),
     vim.fn.expand("~/code/syntra-nvim/bin/lgcc"),
     vim.fn.expand("~/.local/bin/lgcc"),
     vim.fn.expand("~/.config/nvim/bin/lgcc"),
@@ -172,13 +173,18 @@ end
 --- Find repository root for Task Graph linting in active split, buffer, terminal cwd, git root, or known repositories
 --- @param target? string
 local function find_lint_tasks(target)
+  local default_syn_prover = vim.fn.expand("~/code/syn-prover")
   local default_prover = vim.fn.expand("~/code/prover")
+  local default_syn = vim.fn.expand("~/code/syn-nvim")
   local default_syntra = vim.fn.expand("~/code/syntra-nvim")
 
-  if target == "prover" and vim.uv.fs_stat(default_prover) then
-    return default_prover
-  elseif (target == "syntra" or target == "syntra-nvim") and vim.uv.fs_stat(default_syntra) then
-    return default_syntra
+  local prover_path = vim.uv.fs_stat(default_syn_prover) and default_syn_prover or default_prover
+  local syn_path = vim.uv.fs_stat(default_syn) and default_syn or default_syntra
+
+  if target == "prover" and vim.uv.fs_stat(prover_path) then
+    return prover_path
+  elseif (target == "syntra" or target == "syntra-nvim" or target == "syn" or target == "syn-nvim") and vim.uv.fs_stat(syn_path) then
+    return syn_path
   end
 
   local dirs = get_active_dirs()
@@ -188,18 +194,18 @@ local function find_lint_tasks(target)
     if git_root then
       return git_root
     end
-    if dir:match("/prover") and vim.uv.fs_stat(default_prover) then
-      return default_prover
+    if dir:match("/prover") and vim.uv.fs_stat(prover_path) then
+      return prover_path
     end
-    if dir:match("/syntra") and vim.uv.fs_stat(default_syntra) then
-      return default_syntra
+    if (dir:match("/syn%-nvim") or dir:match("/syntra")) and vim.uv.fs_stat(syn_path) then
+      return syn_path
     end
   end
 
-  if vim.uv.fs_stat(default_syntra) then
-    return default_syntra
-  elseif vim.uv.fs_stat(default_prover) then
-    return default_prover
+  if vim.uv.fs_stat(syn_path) then
+    return syn_path
+  elseif vim.uv.fs_stat(prover_path) then
+    return prover_path
   end
 
   return nil
@@ -332,11 +338,25 @@ local function show_repo_tasks(repo_path, origin_win, target_task_id)
     local file_str = t.file or ""
     local fullpath = (file_str:sub(1, 1) == "/") and file_str or (root .. "/" .. file_str)
 
+    local maturity_badge = ""
+    if t.maturity == "VERIFIED" then
+      maturity_badge = "🟢 [VERIFIED] "
+    elseif t.maturity == "DRAFT" then
+      maturity_badge = "🟠 [DRAFT] "
+    elseif t.maturity == "INFORMAL" then
+      maturity_badge = "🟡 [INFORMAL] "
+    end
+
+    local proof_note = ""
+    if t.unproven_goals and #t.unproven_goals > 0 then
+      proof_note = " [⊢ " .. table.concat(t.unproven_goals, "; ") .. "]"
+    end
+
     table.insert(qf, {
       filename = fullpath,
       lnum = t.line,
-      text = string.format("[Tier %s] %s%s%s: %s", t.tier, t.id, deps_str, blocks_str, t.desc or t.description or ""),
-      type = t.tier == "A" and "E" or (t.tier == "B" and "W" or "I"),
+      text = string.format("%s[Tier %s] %s%s%s: %s%s", maturity_badge, t.tier, t.id, deps_str, blocks_str, t.desc or t.description or "", proof_note),
+      type = (t.maturity == "INFORMAL" and "W") or (t.maturity == "DRAFT" and "I") or "E",
     })
   end
 
