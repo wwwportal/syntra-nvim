@@ -11,6 +11,8 @@ namespace lgcc {
 // TODO(lgcc-spec-scanner | tier:B | depends_on:[spec-jit-patch-schema] | blocks:[lgcc-topo-spec-stitcher]): Discover and extract distributed in-tree LexLean specification fragments.
 // Description: Implement in-line specification patch scanner in lgcc C++ extracting distributed LexLean fragments and dependency tags across all source files.
 // Criterion: review: "lgcc --scan-specs discovers all in-tree specification fragments with correct source file and line offsets"
+// [lexlean:declarations]
+// {"constructors":[{"fields":[],"name":"TierA"},{"fields":[],"name":"TierB"},{"fields":[],"name":"TierC"}],"kind":"inductive","name":"Tier","parameters":[],"type_parameters":[]}
 
 // TODO(prismpm-jit-verifier | tier:B | depends_on:[lgcc-topo-spec-stitcher] | blocks:[prismpm-rust-bridge]): Execute Just-In-Time formal verification of stitched LexLean specifications.
 // Description: Hook lgcc JIT-stitched .lex.tex specification into prismpm check and lexlean verify to execute machine-checked proof replay before commit and build.

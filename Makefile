@@ -6,7 +6,8 @@ SRC = src/main.cpp \
       src/ast/skeletonizer.cpp \
       src/graph/symbol_table.cpp \
       src/graph/graph.cpp \
-      src/router/router.cpp
+      src/router/router.cpp \
+      src/spec/stitcher.cpp
 
 TARGET = bin/lgcc
 

@@ -4,6 +4,7 @@
 #include "graph/symbol_table.hpp"
 #include "graph/graph.hpp"
 #include "router/router.hpp"
+#include "spec/stitcher.hpp"
 
 using namespace lgcc;
 
@@ -214,6 +215,39 @@ int main(int argc, char* argv[]) {
         }
 
         std::cout << ContextRouter::to_json(res);
+        return 0;
+    }
+
+    if (mode == "--scan-specs") {
+        fs::path root = (argc >= 3) ? argv[2] : fs::current_path();
+        auto frags = SpecStitcher::scan_repository(root);
+        std::cout << "Discovered " << frags.size() << " in-tree specification fragments:\n";
+        for (const auto& f : frags) {
+            std::cout << "  ● [" << f.tier << "] " << f.id << " (" << f.source_file.string() << ":" << f.line << ")\n";
+            std::cout << "    Desc: " << f.description << "\n";
+            if (!f.declarations_json.empty()) {
+                std::cout << "    [lexlean:declarations] (" << f.declarations_json.size() << " bytes)\n";
+            }
+            if (!f.theorems_json.empty()) {
+                std::cout << "    [lexlean:theorems] (" << f.theorems_json.size() << " bytes)\n";
+            }
+        }
+        return 0;
+    }
+
+    if (mode == "--stitch-specs") {
+        fs::path root = fs::current_path();
+        std::string mod_name = "Syntra.StitchedSpec";
+        if (argc >= 3) mod_name = argv[2];
+        if (argc >= 4) root = argv[3];
+
+        auto frags = SpecStitcher::scan_repository(root);
+        auto res = SpecStitcher::stitch(frags, mod_name);
+        if (!res.success) {
+            std::cerr << "Error stitching specifications: " << res.error << "\n";
+            return 1;
+        }
+        std::cout << res.stitched_lex_tex;
         return 0;
     }
 
