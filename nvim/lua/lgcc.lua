@@ -460,6 +460,7 @@ end
 
 --- Clear lgcc results and remove in-line diagnostics
 function M.clear()
+  local was_running = active_job ~= nil
   if active_job then
     pcall(function() active_job:kill(9) end)
     active_job = nil
@@ -471,8 +472,15 @@ function M.clear()
   for _, b in ipairs(vim.api.nvim_list_bufs()) do
     pcall(vim.api.nvim_buf_clear_namespace, b, ns_lgcc, 0, -1)
   end
-  vim.api.nvim_echo({ { "lgcc: in-line diagnostics cleared", "Normal" } }, false, {})
+  if was_running then
+    vim.api.nvim_echo({ { "lgcc: compilation cancelled", "ModeMsg" } }, false, {})
+  else
+    vim.api.nvim_echo({ { "lgcc: in-line diagnostics cleared", "Normal" } }, false, {})
+  end
 end
+
+M.cancel = M.clear
+M.stop = M.clear
 
 -- SPEC(lgcc-cli-router-hook | tier:B | depends_on:[ir-schema-formatter] | blocks:[lgcc-compressed-ir]): Connect budget router directly into Neovim lgcc execution loop.
 -- Description: Integrate bundle_ir.py --route --budget into lgcc.lua with optional --budget argument for dynamic context allocation.
@@ -512,7 +520,7 @@ vim.api.nvim_create_user_command("Lgcc", function(ctx)
       engine = "agy"
     elseif arg == "-l" or arg == "--local" or arg == "local" then
       engine = "local"
-    elseif arg == "clear" then
+    elseif arg == "clear" or arg == "cancel" or arg == "stop" or arg == "kill" then
       M.clear()
       return
     elseif arg == "--spec" or arg == "spec" then
